@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<title>Номерок</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=Roboto+Condensed:wght@500;700&display=swap">
+<style>
+/* Layout: одноколоночное мини-приложение Telegram — шапка с поиском, чипы фильтров, лента карточек с табличками, нижние шторки */
+:root{
+  --bg:#f3f5f9; --surface:#ffffff; --fg:#121820; --muted:#5d6878; --line:#dde2ea;
+  --accent:#0b57b8; --accent-fg:#ffffff; --accent-soft:#e3ecf9;
+  --tg:#2a9fd8; --wa:#1fa855; --ok:#1f8a4c;
+  --plate-bg:#fbfbf8; --plate-fg:#0d0d0d;
+  --shadow:0 1px 2px rgba(18,24,32,.06),0 4px 14px rgba(18,24,32,.05);
+  --f-body:"Golos Text",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --f-plate:"Roboto Condensed","Arial Narrow",Arial,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0e131a; --surface:#171e28; --fg:#e8edf4; --muted:#93a0b2; --line:#263142;
+  --accent:#4b8eea; --accent-fg:#06121f; --accent-soft:#1a2a40;
+  --tg:#3fb0e6; --wa:#34c46d; --ok:#4cc27f;
+  --shadow:0 1px 2px rgba(0,0,0,.4); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0e131a; --surface:#171e28; --fg:#e8edf4; --muted:#93a0b2; --line:#263142;
+  --accent:#4b8eea; --accent-fg:#06121f; --accent-soft:#1a2a40;
+  --tg:#3fb0e6; --wa:#34c46d; --ok:#4cc27f;
+  --shadow:0 1px 2px rgba(0,0,0,.4); color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:15px;line-height:1.45;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 96px}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+.wrap{max-width:560px;margin:0 auto}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+header{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);padding-block:14px 10px;display:grid;gap:10px}
+.brand{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.brand h1{margin:0;font-size:22px;font-weight:700;letter-spacing:-.01em}
+.brand h1 b{color:var(--accent)}
+.brand small{color:var(--muted);font-size:13px}
+.search{display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:0 12px;height:44px}
+.search input{border:0;background:none;outline:none;flex:1;min-width:0;font-size:16px;text-transform:uppercase}
+.search input::placeholder{text-transform:none;color:var(--muted)}
+.search svg{flex:none;color:var(--muted)}
+.chips{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin-inline:-2px;padding:2px}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 13px;font-size:14px;cursor:pointer;white-space:nowrap}
+.chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+.row{display:flex;gap:8px;align-items:center}
+.row select{flex:1;min-width:0;height:38px;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:0 10px}
+
+.meta{display:flex;justify-content:space-between;align-items:baseline;color:var(--muted);font-size:13px;margin:6px 2px 10px}
+.meta em{font-style:normal;background:var(--accent-soft);color:var(--accent);padding:2px 8px;border-radius:6px;font-size:12px}
+.list{display:grid;gap:10px}
+.card{background:var(--surface);border-radius:14px;padding:14px;box-shadow:var(--shadow);display:grid;gap:10px;cursor:pointer;text-align:left;border:0;width:100%}
+.card:hover{outline:1px solid var(--line)}
+.card-top{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.price{font-size:19px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.card-sub{display:flex;justify-content:space-between;gap:8px;color:var(--muted);font-size:13px;flex-wrap:wrap}
+.tags{display:flex;gap:6px;flex-wrap:wrap}
+.tag{font-size:12px;padding:2px 8px;border-radius:6px;background:var(--accent-soft);color:var(--accent);font-weight:500}
+.empty{text-align:center;color:var(--muted);padding:40px 10px;background:var(--surface);border-radius:14px}
+
+/* Табличка ГОСТ Р 50577: белая, чёрная окантовка, регион справа с RUS и флагом */
+.plate{display:inline-flex;align-items:stretch;background:var(--plate-bg);color:var(--plate-fg);border:2px solid var(--plate-fg);border-radius:7px;
+  font-family:var(--f-plate);font-weight:700;line-height:1;height:46px;box-shadow:inset 0 0 0 2px var(--plate-bg),inset 0 0 0 3px rgba(0,0,0,.18);user-select:all}
+.plate .num{display:flex;align-items:flex-end;gap:3px;padding:0 9px 5px;font-size:34px;letter-spacing:.01em}
+.plate .num .l{font-size:26px;padding-bottom:1px}
+.plate .reg{border-left:2px solid var(--plate-fg);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 6px;min-width:44px}
+.plate .reg b{font-size:24px;letter-spacing:.01em}
+.plate .rus{display:flex;align-items:center;gap:2px;font-size:8.5px;font-weight:700;margin-top:2px}
+.flag{width:11px;height:7px;border:.5px solid #777;background:linear-gradient(#fff 0 33.3%,#1c3f9c 33.3% 66.6%,#d52b1e 66.6%)}
+.plate.lg{height:62px;border-radius:9px}
+.plate.lg .num{font-size:46px;padding:0 12px 6px}.plate.lg .num .l{font-size:35px}
+.plate.lg .reg{min-width:58px}.plate.lg .reg b{font-size:32px}.plate.lg .rus{font-size:11px}
+.plate.lg .flag{width:14px;height:9px}
+
+.fab{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:6;
+  background:var(--accent);color:var(--accent-fg);border:0;border-radius:14px;height:50px;padding:0 26px;font-weight:600;font-size:16px;box-shadow:0 6px 20px rgba(11,87,184,.35);cursor:pointer;display:flex;align-items:center;gap:8px}
+
+/* Шторки */
+.scrim{position:fixed;inset:0;background:rgba(6,10,16,.45);z-index:20;display:flex;align-items:flex-end;justify-content:center}
+.sheet{background:var(--surface);width:100%;max-width:560px;max-height:92%;overflow-y:auto;border-radius:20px 20px 0 0;
+  padding:10px max(18px,env(safe-area-inset-right,0px)) calc(20px + env(safe-area-inset-bottom,0px)) max(18px,env(safe-area-inset-left,0px));
+  animation:up .22s ease-out;display:grid;gap:16px}
+@keyframes up{from{transform:translateY(30px);opacity:.6}to{transform:none;opacity:1}}
+@media (prefers-reduced-motion:reduce){.sheet{animation:none}}
+.grip{width:40px;height:4px;border-radius:2px;background:var(--line);margin:0 auto}
+.sheet-head{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.sheet-head h2{margin:0;font-size:19px}
+.x{border:0;background:var(--bg);width:34px;height:34px;border-radius:50%;cursor:pointer;font-size:18px;color:var(--muted)}
+.center{display:flex;justify-content:center;padding:6px 0}
+.facts{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin:0;font-size:14px}
+.facts dt{color:var(--muted)}.facts dd{margin:0;min-width:0}
+.desc{margin:0;color:var(--fg)}
+.seller{display:flex;align-items:center;gap:12px;padding:12px;border-radius:12px;background:var(--bg)}
+.ava{width:42px;height:42px;border-radius:50%;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;font-weight:700;flex:none}
+.seller div{min-width:0}.seller b{display:block}.seller span{color:var(--muted);font-size:13px}
+.contacts{display:grid;gap:8px}
+.cbtn{display:flex;align-items:center;justify-content:center;gap:8px;height:48px;border-radius:12px;font-weight:600;text-decoration:none;color:#fff}
+.cbtn.tg{background:var(--tg)}.cbtn.wa{background:var(--wa)}
+.copyrow{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--muted);flex-wrap:wrap}
+.copyrow code{font-family:var(--f-body);color:var(--fg);background:var(--bg);padding:3px 8px;border-radius:6px;user-select:all}
+.linkbtn{border:0;background:none;color:var(--accent);cursor:pointer;padding:2px 4px;font-size:13px}
+.note{font-size:12px;color:var(--muted);margin:0}
+
+form{display:grid;gap:14px}
+.f{display:grid;gap:5px}
+.f label{font-size:13px;color:var(--muted);font-weight:500}
+.f input,.f textarea,.f select{height:44px;border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:0 12px;font-size:16px;width:100%;min-width:0}
+.f textarea{height:auto;min-height:74px;padding:10px 12px;resize:vertical}
+.plate-in{display:grid;grid-template-columns:1fr 1.4fr 1.2fr 1.1fr;gap:6px}
+.plate-in input{text-align:center;text-transform:uppercase;font-family:var(--f-plate);font-weight:700;font-size:20px;padding:0 4px}
+.hint{font-size:12px;color:var(--muted)}
+.err{font-size:12px;color:#d0342c}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.submit{height:50px;border:0;border-radius:12px;background:var(--accent);color:var(--accent-fg);font-weight:600;font-size:16px;cursor:pointer}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(80px + env(safe-area-inset-bottom,0px));z-index:30;background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:14px;max-width:calc(100% - 32px)}
+@media (max-width:380px){.plate .num{font-size:29px}.plate .num .l{font-size:22px}.plate .reg b{font-size:21px}}
+</style>
+
+</head><body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <h1>Номер<b>ок</b></h1>
+      <small id="count"></small>
+    </div>
+    <label class="search" for="q">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input id="q" type="search" placeholder="Поиск: 777, АМР, регион 77…" autocomplete="off">
+    </label>
+    <div class="chips" id="chips" role="group" aria-label="Категории"></div>
+    <div class="row">
+      <select id="region" aria-label="Регион"></select>
+      <select id="sort" aria-label="Сортировка">
+        <option value="new">Сначала новые</option>
+        <option value="cheap">Сначала дешевле</option>
+        <option value="exp">Сначала дороже</option>
+      </select>
+    </div>
+  </header>
+
+  <div class="meta"><span id="found"></span><em>Примеры объявлений</em></div>
+  <main class="list" id="list"></main>
+</div>
+
+<button class="fab" id="add" type="button">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg>
+  Разместить номер
+</button>
+
+<div class="scrim" id="scrim" hidden></div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+const TG = window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData !== undefined ? window.Telegram.WebApp : null;
+const TGU = TG && TG.initDataUnsafe && TG.initDataUnsafe.user;
+if (TG) {
+  TG.ready(); TG.expand();
+  if (TG.colorScheme) document.documentElement.dataset.theme = TG.colorScheme;
+  try { TG.setHeaderColor("bg_color"); } catch(e) {}
+}
+// Внутри Telegram ссылки открываем родными методами
+document.addEventListener("click", e => {
+  const a = e.target.closest("a.cbtn"); if (!a || !TG) return;
+  e.preventDefault();
+  if (a.href.startsWith("https://t.me/")) TG.openTelegramLink(a.href); else TG.openLink(a.href);
+});
+const LETTERS = "АВЕКМНОРСТУХ";
+const LAT = {A:"А",B:"В",E:"Е",K:"К",M:"М",H:"Н",O:"О",P:"Р",C:"С",T:"Т",Y:"У",X:"Х"};
+const toCyr = s => s.toUpperCase().split("").map(c => LAT[c] || c).join("");
+const REGIONS = {"77":"Москва","97":"Москва","99":"Москва","177":"Москва","777":"Москва","799":"Москва","50":"Московская обл.","750":"Московская обл.","78":"Санкт-Петербург","178":"Санкт-Петербург","16":"Татарстан","116":"Татарстан","23":"Краснодарский край","93":"Краснодарский край","05":"Дагестан","54":"Новосибирская обл.","66":"Свердловская обл.","61":"Ростовская обл.","02":"Башкортостан","95":"Чечня"};
+const regName = r => REGIONS[r] || "Регион " + r;
+
+let ads = [
+  {id:1,l1:"А",d:"777",l2:"АА",r:"77",price:3500000,name:"Тимур",city:"Москва",tg:"timur_nomera",wa:"79000000001",desc:"Номер на Mercedes S-класса, переоформление в МРЭО вместе с авто.",days:0},
+  {id:2,l1:"Е",d:"001",l2:"КХ",r:"99",price:2200000,name:"Артём",city:"Москва",tg:"artem_ekh",wa:"",desc:"Оформление через сохранение номера. Торг у машины.",days:1},
+  {id:3,l1:"О",d:"555",l2:"ОО",r:"05",price:450000,name:"Магомед",city:"Махачкала",tg:"",wa:"79000000003",desc:"Все буквы и цифры одинаковые. Пишите в WhatsApp.",days:1},
+  {id:4,l1:"М",d:"121",l2:"ММ",r:"78",price:180000,name:"Ольга",city:"Санкт-Петербург",tg:"olga_spb",wa:"79000000004",desc:"Зеркальный номер, стоит на Kia Rio.",days:2},
+  {id:5,l1:"В",d:"100",l2:"ОР",r:"16",price:95000,name:"Ильдар",city:"Казань",tg:"ildar116",wa:"79000000005",desc:"Круглые цифры. Переоформление при покупке авто.",days:3},
+  {id:6,l1:"К",d:"888",l2:"КК",r:"23",price:620000,name:"Сергей",city:"Краснодар",tg:"serg_kuban",wa:"79000000006",desc:"Три восьмёрки и одинаковые буквы.",days:3},
+  {id:7,l1:"Н",d:"707",l2:"НН",r:"54",price:140000,name:"Денис",city:"Новосибирск",tg:"denis_nsk",wa:"",desc:"Зеркальные цифры, регион 54.",days:4},
+  {id:8,l1:"Т",d:"333",l2:"ТТ",r:"66",price:390000,name:"Андрей",city:"Екатеринбург",tg:"andrey_ekb",wa:"79000000008",desc:"Отдам вместе с Camry или отдельно через переоформление.",days:5},
+  {id:9,l1:"Х",d:"010",l2:"ХХ",r:"61",price:210000,name:"Руслан",city:"Ростов-на-Дону",tg:"",wa:"79000000009",desc:"Зеркальный номер, все буквы Х.",days:6},
+  {id:10,l1:"С",d:"200",l2:"СС",r:"50",price:160000,name:"Павел",city:"Подольск",tg:"pavel_50",wa:"79000000010",desc:"Круглые цифры, одинаковые буквы.",days:8},
+];
+
+function tagsOf(a){
+  const t=[], d=a.d;
+  if(d[0]===d[1]&&d[1]===d[2]) t.push("same");
+  else if(d[0]===d[2]) t.push("mirror");
+  if(/^[1-9]00$/.test(d)) t.push("round");
+  if(d.startsWith("00")) t.push("zero");
+  if(a.l1===a.l2[0]&&a.l2[0]===a.l2[1]) t.push("letters");
+  return t;
+}
+const TAGS = {same:"Одинаковые цифры",mirror:"Зеркальные",round:"Круглые",zero:"Нули в начале",letters:"Одинаковые буквы"};
+const CHIPS = [["all","Все"],["same","Одинаковые цифры"],["mirror","Зеркальные"],["letters","Одинаковые буквы"],["round","Круглые"],["zero","Нули в начале"]];
+
+const fmt = n => new Intl.NumberFormat("ru-RU").format(n) + " ₽";
+const ago = d => d===0?"сегодня":d===1?"вчера":d<5?d+" дня назад":d+" дней назад";
+const esc = s => String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+function plate(a,lg){
+  return `<span class="plate${lg?" lg":""}" aria-label="Номер ${a.l1}${a.d}${a.l2} ${a.r}">
+    <span class="num"><span class="l">${esc(a.l1)}</span>${esc(a.d)}<span class="l">${esc(a.l2)}</span></span>
+    <span class="reg"><b>${esc(a.r)}</b><span class="rus">RUS <i class="flag"></i></span></span></span>`;
+}
+
+const state = {q:"",chip:"all",region:"all",sort:"new"};
+const $ = id => document.getElementById(id);
+
+function renderChips(){
+  $("chips").innerHTML = CHIPS.map(([k,v])=>`<button type="button" class="chip" data-k="${k}" aria-pressed="${state.chip===k}">${v}</button>`).join("");
+}
+function renderRegions(){
+  const rs=[...new Set(ads.map(a=>a.r))].sort((a,b)=>a-b);
+  const cur=state.region;
+  $("region").innerHTML = `<option value="all">Все регионы</option>` + rs.map(r=>`<option value="${r}">${r} · ${regName(r)}</option>`).join("");
+  $("region").value = rs.includes(cur)?cur:"all";
+}
+function render(){
+  const q = toCyr(state.q.replace(/\s+/g,""));
+  let list = ads.filter(a=>{
+    if(state.chip!=="all" && !tagsOf(a).includes(state.chip)) return false;
+    if(state.region!=="all" && a.r!==state.region) return false;
+    if(q){ const full=(a.l1+a.d+a.l2+a.r); if(!full.includes(q) && !(a.l1+a.l2).includes(q) && a.r!==q) return false; }
+    return true;
+  });
+  list.sort((a,b)=>state.sort==="cheap"?a.price-b.price:state.sort==="exp"?b.price-a.price:a.days-b.days);
+  $("count").textContent = ads.length + " объявлений";
+  $("found").textContent = list.length ? "Найдено: "+list.length : "";
+  $("list").innerHTML = list.length ? list.map(a=>`
+    <button type="button" class="card" data-id="${a.id}">
+      <div class="card-top">${plate(a)}<span class="price">${fmt(a.price)}</span></div>
+      ${tagsOf(a).length?`<div class="tags">${tagsOf(a).map(t=>`<span class="tag">${TAGS[t]}</span>`).join("")}</div>`:""}
+      <div class="card-sub"><span>${esc(a.city)} · ${esc(a.name)}</span><span>${ago(a.days)}</span></div>
+    </button>`).join("")
+    : `<div class="empty">Ничего не нашлось.<br>Попробуйте другой регион или уберите фильтр.</div>`;
+}
+
+/* Шторки */
+function openSheet(html){ $("scrim").innerHTML=`<div class="sheet" role="dialog" aria-modal="true">${html}</div>`; $("scrim").hidden=false; document.body.style.overflow="hidden"; }
+function closeSheet(){ $("scrim").hidden=true; $("scrim").innerHTML=""; document.body.style.overflow=""; }
+$("scrim").addEventListener("click",e=>{ if(e.target.id==="scrim"||e.target.closest(".x")) closeSheet(); });
+document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeSheet(); });
+
+function showAd(a){
+  const waNice = a.wa ? "+"+a.wa.replace(/^(\d)(\d{3})(\d{3})(\d{2})(\d{2})$/,"$1 $2 $3-$4-$5") : "";
+  openSheet(`
+    <div class="grip"></div>
+    <div class="sheet-head"><h2>${fmt(a.price)}</h2><button class="x" type="button" aria-label="Закрыть">✕</button></div>
+    <div class="center">${plate(a,true)}</div>
+    ${tagsOf(a).length?`<div class="tags">${tagsOf(a).map(t=>`<span class="tag">${TAGS[t]}</span>`).join("")}</div>`:""}
+    <dl class="facts"><dt>Регион</dt><dd>${a.r} · ${regName(a.r)}</dd><dt>Город</dt><dd>${esc(a.city)}</dd><dt>Размещено</dt><dd>${ago(a.days)}</dd></dl>
+    ${a.desc?`<p class="desc">${esc(a.desc)}</p>`:""}
+    <div class="seller"><div class="ava">${esc(a.name[0])}</div><div><b>${esc(a.name)}</b><span>Частное лицо</span></div></div>
+    <div class="contacts">
+      ${a.tg?`<a class="cbtn tg" href="https://t.me/${esc(a.tg)}" target="_blank" rel="noopener">Написать в Telegram</a>
+        <div class="copyrow">Telegram: <code>@${esc(a.tg)}</code><button class="linkbtn" data-copy="@${esc(a.tg)}" type="button">Скопировать</button></div>`:""}
+      ${a.wa?`<a class="cbtn wa" href="https://wa.me/${esc(a.wa)}?text=${encodeURIComponent("Здравствуйте! Пишу по объявлению о номере "+a.l1+a.d+a.l2+" "+a.r)}" target="_blank" rel="noopener">Написать в WhatsApp</a>
+        <div class="copyrow">WhatsApp: <code>${waNice}</code><button class="linkbtn" data-copy="${waNice}" type="button">Скопировать</button></div>`:""}
+    </div>
+    <p class="note">Это пример объявления, контакты вымышленные. Номер передаётся вместе с автомобилем или через сохранение номера в ГИБДД, а не как отдельный товар.</p>`);
+}
+
+$("scrim").addEventListener("click",async e=>{
+  const b=e.target.closest("[data-copy]"); if(!b) return;
+  try{ await navigator.clipboard.writeText(b.dataset.copy); toast("Скопировано"); }
+  catch{ const c=b.previousElementSibling; const r=document.createRange(); r.selectNodeContents(c); const s=getSelection(); s.removeAllRanges(); s.addRange(r); toast("Выделено — скопируйте вручную"); }
+});
+
+function showForm(){
+  openSheet(`
+    <div class="grip"></div>
+    <div class="sheet-head"><h2>Новое объявление</h2><button class="x" type="button" aria-label="Закрыть">✕</button></div>
+    <div class="center" id="pv"></div>
+    <form id="f" novalidate>
+      <div class="f"><label>Номер</label>
+        <div class="plate-in">
+          <input id="f-l1" maxlength="1" placeholder="А" aria-label="Первая буква" value="Р">
+          <input id="f-d" maxlength="3" inputmode="numeric" placeholder="123" aria-label="Цифры" value="444">
+          <input id="f-l2" maxlength="2" placeholder="ВС" aria-label="Две буквы" value="РР">
+          <input id="f-r" maxlength="3" inputmode="numeric" placeholder="77" aria-label="Регион" value="77">
+        </div>
+        <span class="hint">Буквы только: ${LETTERS.split("").join(" ")}</span>
+        <span class="err" id="e-plate" hidden></span>
+      </div>
+      <div class="two">
+        <div class="f"><label for="f-price">Цена, ₽</label><input id="f-price" inputmode="numeric" value="250 000"></div>
+        <div class="f"><label for="f-city">Город</label><input id="f-city" value="Москва"></div>
+      </div>
+      <div class="f"><label for="f-name">Ваше имя</label><input id="f-name" value="Иван"></div>
+      <div class="two">
+        <div class="f"><label for="f-tg">Telegram</label><input id="f-tg" placeholder="@username" value="@ivan_example"></div>
+        <div class="f"><label for="f-wa">WhatsApp</label><input id="f-wa" inputmode="tel" placeholder="+7 900 000-00-00"></div>
+      </div>
+      <span class="err" id="e-contact" hidden></span>
+      <div class="f"><label for="f-desc">Описание</label><textarea id="f-desc" placeholder="Как переоформляется, есть ли торг">Одинаковые цифры и буквы. Переоформление вместе с авто, торг уместен.</textarea></div>
+      <button class="submit" type="submit">Опубликовать</button>
+      <p class="note">В прототипе объявление появится только у вас. В рабочей версии оно будет сохраняться в базу.</p>
+    </form>`);
+  if (TGU) {
+    $("f-name").value = TGU.first_name || "";
+    $("f-tg").value = TGU.username ? "@" + TGU.username : "";
+  }
+  const v = id => $(id).value.trim();
+  const upd = () => {
+    ["f-l1","f-l2"].forEach(id=>{ const el=$(id); const c=toCyr(el.value); if(c!==el.value) el.value=c; });
+    $("pv").innerHTML = plate({l1:v("f-l1")||"_",d:v("f-d")||"___",l2:v("f-l2")||"__",r:v("f-r")||"__"},true);
+  };
+  $("f").addEventListener("input",upd); upd();
+  $("f").addEventListener("submit",e=>{
+    e.preventDefault();
+    const l1=toCyr(v("f-l1")), d=v("f-d"), l2=toCyr(v("f-l2")), r=v("f-r");
+    const re = new RegExp(`^[${LETTERS}]$`), re2 = new RegExp(`^[${LETTERS}]{2}$`);
+    let err="";
+    if(!re.test(l1)||!re2.test(l2)) err="Проверьте буквы: допустимы только "+LETTERS.split("").join(", ")+".";
+    else if(!/^\d{3}$/.test(d)||d==="000") err="Нужно три цифры, 000 не выдаётся.";
+    else if(!/^\d{2,3}$/.test(r)) err="Код региона — 2 или 3 цифры.";
+    $("e-plate").textContent=err; $("e-plate").hidden=!err;
+    const tg=v("f-tg").replace(/^@/,"").replace(/^https?:\/\/t\.me\//,""), wa=v("f-wa").replace(/\D/g,"").replace(/^8/,"7");
+    const cerr = (!tg && !wa) ? "Укажите хотя бы один контакт: Telegram или WhatsApp." : (wa && wa.length!==11 ? "Номер WhatsApp: 11 цифр, например +7 900 000-00-00." : "");
+    $("e-contact").textContent=cerr; $("e-contact").hidden=!cerr;
+    if(err||cerr) return;
+    ads.unshift({id:Date.now(),l1,d,l2,r,price:+v("f-price").replace(/\D/g,"")||0,name:v("f-name")||"Продавец",city:v("f-city")||regName(r),tg,wa,desc:v("f-desc"),days:0});
+    closeSheet(); renderRegions(); state.sort="new"; $("sort").value="new"; render(); window.scrollTo({top:0}); toast("Объявление опубликовано");
+  });
+}
+
+let tt; function toast(t){ const el=$("toast"); el.textContent=t; el.hidden=false; clearTimeout(tt); tt=setTimeout(()=>el.hidden=true,2200); }
+
+$("chips").addEventListener("click",e=>{ const b=e.target.closest(".chip"); if(!b) return; state.chip=b.dataset.k; renderChips(); render(); });
+$("q").addEventListener("input",e=>{ state.q=e.target.value; render(); });
+$("region").addEventListener("change",e=>{ state.region=e.target.value; render(); });
+$("sort").addEventListener("change",e=>{ state.sort=e.target.value; render(); });
+$("list").addEventListener("click",e=>{ const c=e.target.closest(".card"); if(c) showAd(ads.find(a=>a.id==c.dataset.id)); });
+$("add").addEventListener("click",showForm);
+
+renderChips(); renderRegions(); render();
+</script>
+
+</body></html>
