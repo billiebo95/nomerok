@@ -142,6 +142,8 @@ form{display:grid;gap:14px}
 .st-rejected{background:rgba(208,52,44,.14);color:#d0342c}
 .report{justify-self:center;color:var(--muted)}
 a.cbtn{cursor:pointer}
+.adm{font-size:12px;font-weight:600;padding:3px 8px;border-radius:6px;background:rgba(208,52,44,.14);color:#d0342c;white-space:nowrap}
+.btn2[data-adm]{flex:none;width:100%;height:46px}
 </style>
 
 </head><body>
@@ -204,6 +206,7 @@ const REGIONS = {"01":"Адыгея","02":"Башкортостан","102":"Ба
 const regName = r => REGIONS[r] || "Регион " + r;
 
 let ads = [];
+let IS_ADMIN = false;
 let loadState = "loading"; // loading | ok | error
 
 function tagsOf(a){
@@ -300,7 +303,7 @@ function showAd(a){
     ${head(fmt(a.price))}
     <div class="center">${plate(a,true)}</div>
     ${tagsOf(a).length?`<div class="tags">${tagsOf(a).map(t=>`<span class="tag">${TAGS[t]}</span>`).join("")}</div>`:""}
-    <dl class="facts"><dt>Регион</dt><dd>${esc(a.r)} · ${esc(regName(a.r))}</dd>${a.city?`<dt>Город</dt><dd>${esc(a.city)}</dd>`:""}<dt>Размещено</dt><dd>${ago(a.published_at)}</dd></dl>
+    <dl class="facts"><dt>Регион</dt><dd>${esc(a.r)} · ${esc(regName(a.r))}</dd>${a.city?`<dt>Город</dt><dd>${esc(a.city)}</dd>`:""}<dt>Размещено</dt><dd>${ago(a.published_at)}</dd><dt>Объявление</dt><dd>№${a.id}</dd></dl>
     ${a.descr?`<p class="desc">${esc(a.descr)}</p>`:""}
     <div class="seller"><div class="ava">${esc((a.seller_name||"?")[0])}</div><div><b>${esc(a.seller_name)}</b><span>Частное лицо</span></div></div>
     <div class="contacts">
@@ -310,7 +313,7 @@ function showAd(a){
         <div class="copyrow">WhatsApp: <code>${waNice}</code><button class="linkbtn" data-copy="${waNice}" type="button">Скопировать</button></div>`:""}
     </div>
     <p class="note">Номер переоформляется вместе с автомобилем или через сохранение номера в ГИБДД. Не переводите предоплату незнакомым людям.</p>
-    <button class="linkbtn report" type="button" data-report="${a.id}">Пожаловаться на объявление</button>`);
+    ${IS_ADMIN?`<button class="btn2 danger" type="button" data-adm="${a.id}">Снять (модератор)</button>`:`<button class="linkbtn report" type="button" data-report="${a.id}">Пожаловаться на объявление</button>`}`);
 }
 
 function showReport(id){
@@ -339,6 +342,14 @@ $("scrim").addEventListener("click",async e=>{
     return;
   }
   const rp=e.target.closest("[data-report]"); if(rp){ showReport(rp.dataset.report); return; }
+  const adm=e.target.closest("[data-adm]");
+  if(adm){
+    if(adm.dataset.confirm!=="1"){ adm.dataset.confirm="1"; adm.textContent="Нажмите ещё раз, чтобы снять"; setTimeout(()=>{ if(adm.isConnected){ adm.dataset.confirm=""; adm.textContent="Снять (модератор)"; } },3000); return; }
+    adm.disabled=true;
+    try{ await api("admin_remove",{id:Number(adm.dataset.adm)}); closeSheet(); toast("Объявление снято"); loadAds(); }
+    catch(err){ toast(err.message); adm.disabled=false; }
+    return;
+  }
   const act=e.target.closest("[data-act]");
   if(act){
     const {act:kind,id}=act.dataset;
@@ -440,6 +451,7 @@ $("add").addEventListener("click",showForm);
 $("mineBtn").addEventListener("click",showMine);
 
 renderChips(); renderRegions(); loadAds();
+if (TG) api("whoami").then(r=>{ IS_ADMIN=!!r.admin; if(IS_ADMIN) $("count").insertAdjacentHTML("beforebegin",'<span class="adm">Модератор</span>'); }).catch(()=>{});
 </script>
 
 </body></html>

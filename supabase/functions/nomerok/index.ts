@@ -26,6 +26,15 @@ function secretKey(): string {
 const KEY = secretKey();
 
 const LETTERS = "АВЕКМНОРСТУХ";
+const isAdmin = (id: unknown) => Boolean(ADMIN) && String(id) === ADMIN;
+const ADMIN_COMMANDS = [
+  { command: "start", description: "Открыть Номерок" },
+  { command: "pending", description: "Объявления на проверке" },
+  { command: "list", description: "Последние опубликованные (со снятием)" },
+  { command: "del", description: "Снять объявление: /del 15" },
+  { command: "stats", description: "Статистика" },
+  { command: "admin", description: "Помощь модератора" },
+];
 const MAX_PENDING = 3;
 
 const cors = {
@@ -187,6 +196,16 @@ async function handleApp(body: any) {
       return json({ ok: true });
     }
 
+    case "whoami":
+      return json({ admin: isAdmin(uid) });
+
+    case "admin_remove": {
+      if (!isAdmin(uid)) return json({ error: "Нет доступа." }, 403);
+      const a = await adminRemove(Number(body.id));
+      if (!a) return json({ error: "Объявление не найдено или уже снято." }, 404);
+      return json({ ok: true });
+    }
+
     case "report": {
       const id = Number(body.id);
       const reason = String(body.reason || "").trim().slice(0, 300);
@@ -208,12 +227,87 @@ async function handleApp(body: any) {
   return json({ error: "Неизвестное действие." }, 400);
 }
 
+// ---------- модерация ----------
+async function adminRemove(id: number) {
+  if (!Number.isInteger(id)) return null;
+  const rows = await db(`listings?id=eq.${id}&status=in.(pending,active)`, { method: "PATCH", body: JSON.stringify({ status: "removed" }) });
+  const a = rows[0];
+  if (a) await notifySeller(a, `Объявление <b>${h(plateText(a))}</b> снято модератором.`);
+  return a || null;
+}
+
+async function setAdminCommands() {
+  if (!ADMIN) return null;
+  return tg("setMyCommands", { commands: ADMIN_COMMANDS, scope: { type: "chat", chat_id: Number(ADMIN) } });
+}
+
+const ADMIN_HELP = [
+  "<b>Вы модератор Номерка</b>",
+  "",
+  "/pending — объявления на проверке, с кнопками «Одобрить / Отклонить»",
+  "/list — последние 10 опубликованных, у каждого кнопка «Снять»",
+  "/del 15 — снять объявление №15 (номер виден в карточке объявления)",
+  "/stats — сколько объявлений в каждом статусе",
+  "",
+  "В самом приложении у вас в каждом объявлении есть кнопка «Снять (модератор)».",
+].join("\n");
+
+async function handleAdminCommand(chat: number, text: string) {
+  const [cmd, arg] = text.split(/\s+/);
+  const c = cmd.split("@")[0].toLowerCase();
+  if (c === "/admin") {
+    await setAdminCommands();
+    await tg("sendMessage", { chat_id: chat, text: ADMIN_HELP, parse_mode: "HTML" });
+    return true;
+  }
+  if (c === "/pending") {
+    const rows = await db("listings?select=*&status=eq.pending&order=created_at.asc&limit=10");
+    if (!rows.length) { await tg("sendMessage", { chat_id: chat, text: "На проверке ничего нет 👌" }); return true; }
+    for (const a of rows) {
+      await tg("sendMessage", {
+        chat_id: chat, text: adminCard(a, "На проверке"), parse_mode: "HTML",
+        reply_markup: { inline_keyboard: [[{ text: "✅ Одобрить", callback_data: `ok:${a.id}` }, { text: "❌ Отклонить", callback_data: `no:${a.id}` }]] },
+      });
+    }
+    return true;
+  }
+  if (c === "/list") {
+    const rows = await db("listings?select=*&status=eq.active&order=approved_at.desc.nullslast&limit=10");
+    if (!rows.length) { await tg("sendMessage", { chat_id: chat, text: "Опубликованных объявлений пока нет." }); return true; }
+    for (const a of rows) {
+      await tg("sendMessage", {
+        chat_id: chat, text: adminCard(a, "Опубликовано"), parse_mode: "HTML",
+        reply_markup: { inline_keyboard: [[{ text: "🗑 Снять", callback_data: `rm:${a.id}` }]] },
+      });
+    }
+    return true;
+  }
+  if (c === "/del") {
+    const id = Number(arg);
+    if (!Number.isInteger(id)) { await tg("sendMessage", { chat_id: chat, text: "Укажите номер объявления, например: /del 15" }); return true; }
+    const a = await adminRemove(id);
+    await tg("sendMessage", { chat_id: chat, text: a ? `🗑 Снято: №${id} ${plateText(a)}` : `Объявление №${id} не найдено или уже снято.` });
+    return true;
+  }
+  if (c === "/stats") {
+    const rows: { status: string }[] = await db("listings?select=status");
+    const n = (st: string) => rows.filter((r) => r.status === st).length;
+    await tg("sendMessage", {
+      chat_id: chat, parse_mode: "HTML",
+      text: `<b>Статистика</b>\nОпубликовано: ${n("active")}\nНа проверке: ${n("pending")}\nПродано: ${n("sold")}\nОтклонено: ${n("rejected")}\nСнято: ${n("removed")}\nВсего: ${rows.length}`,
+    });
+    return true;
+  }
+  return false;
+}
+
 // ---------- вебхук бота ----------
 async function handleBot(update: any) {
   const msg = update.message;
   if (msg?.text) {
     const chat = msg.chat.id;
     const text: string = msg.text.trim();
+    if (isAdmin(msg.from?.id) && text.startsWith("/") && await handleAdminCommand(chat, text)) return;
     if (text.startsWith("/id")) {
       await tg("sendMessage", { chat_id: chat, text: `Ваш Telegram ID: <code>${msg.from.id}</code>`, parse_mode: "HTML" });
     } else if (text.startsWith("/start")) {
@@ -222,6 +316,10 @@ async function handleBot(update: any) {
         text: "Номерок — объявления о продаже красивых автономеров.\n\nСмотрите номера, связывайтесь с продавцами напрямую или разместите свой.",
         reply_markup: { inline_keyboard: [[{ text: "Открыть Номерок", web_app: { url: APP_URL } }]] },
       });
+      if (isAdmin(msg.from?.id)) {
+        await setAdminCommands();
+        await tg("sendMessage", { chat_id: chat, text: ADMIN_HELP, parse_mode: "HTML" });
+      }
     }
     return;
   }
@@ -239,12 +337,13 @@ async function handleBot(update: any) {
     let label = "";
     if (act === "ok") { patch = { status: "active", approved_at: new Date().toISOString() }; from = "pending"; label = "✅ Одобрено"; }
     if (act === "no") { patch = { status: "rejected" }; from = "pending"; label = "❌ Отклонено"; }
-    if (act === "rm") { patch = { status: "removed" }; from = "active"; label = "🗑 Снято"; }
+    if (act === "rm") { patch = { status: "removed" }; from = "rm"; label = "🗑 Снято"; }
     if (!patch || !Number.isInteger(id)) {
       await tg("answerCallbackQuery", { callback_query_id: cq.id });
       return;
     }
-    const rows = await db(`listings?id=eq.${id}&status=eq.${from}`, { method: "PATCH", body: JSON.stringify(patch) });
+    const filter = from === "rm" ? "status=in.(pending,active)" : `status=eq.${from}`;
+    const rows = await db(`listings?id=eq.${id}&${filter}`, { method: "PATCH", body: JSON.stringify(patch) });
     const a = rows[0];
     await tg("answerCallbackQuery", { callback_query_id: cq.id, text: a ? label : "Уже обработано" });
     if (cq.message) {
@@ -253,7 +352,7 @@ async function handleBot(update: any) {
     }
     if (a && act === "ok") await notifySeller(a, `✅ Ваше объявление <b>${h(plateText(a))}</b> опубликовано в Номерке.`);
     if (a && act === "no") await notifySeller(a, `❌ Объявление <b>${h(plateText(a))}</b> не прошло проверку.`);
-    if (a && act === "rm") await notifySeller(a, `Объявление <b>${h(plateText(a))}</b> снято модератором после жалобы.`);
+    if (a && act === "rm") await notifySeller(a, `Объявление <b>${h(plateText(a))}</b> снято модератором.`);
   }
 }
 
@@ -269,7 +368,8 @@ Deno.serve(async (req) => {
       const hook = await tg("setWebhook", { url: FN_URL, secret_token: whSecret, allowed_updates: ["message", "callback_query"], drop_pending_updates: true });
       const menu = await tg("setChatMenuButton", { menu_button: { type: "web_app", text: "Открыть", web_app: { url: APP_URL } } });
       const cmds = await tg("setMyCommands", { commands: [{ command: "start", description: "Открыть Номерок" }] });
-      return json({ webhook: hook.ok, menu_button: menu.ok, commands: cmds.ok, admin_set: Boolean(ADMIN), details: { hook, menu } });
+      const adm = await setAdminCommands();
+      return json({ webhook: hook.ok, menu_button: menu.ok, commands: cmds.ok, admin_set: Boolean(ADMIN), admin_commands: adm?.ok ?? false, details: { hook, menu } });
     }
     if (req.method !== "POST") return json({ ok: true, name: "nomerok" });
 
