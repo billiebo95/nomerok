@@ -15,7 +15,15 @@ const FN_URL = `${PROJECT_URL}/functions/v1/nomerok`;
 
 const BOT = Deno.env.get("BOT_TOKEN") ?? "";
 const ADMIN = (Deno.env.get("ADMIN_CHAT_ID") ?? "").trim();
-const KEY = Deno.env.get("SB_SECRET_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+function secretKey(): string {
+  const direct = Deno.env.get("SB_SECRET_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (direct) return direct;
+  try { // новые проекты: SUPABASE_SECRET_KEYS = {"default":"sb_secret_..."}
+    const m = JSON.parse(Deno.env.get("SUPABASE_SECRET_KEYS") || "{}");
+    return m.default || Object.values(m)[0] as string || "";
+  } catch { return ""; }
+}
+const KEY = secretKey();
 
 const LETTERS = "АВЕКМНОРСТУХ";
 const MAX_PENDING = 3;
