@@ -126,6 +126,22 @@ form{display:grid;gap:14px}
 .submit{height:50px;border:0;border-radius:12px;background:var(--accent);color:var(--accent-fg);font-weight:600;font-size:16px;cursor:pointer}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(80px + env(safe-area-inset-bottom,0px));z-index:30;background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:14px;max-width:calc(100% - 32px)}
 @media (max-width:380px){.plate .num{font-size:29px}.plate .num .l{font-size:22px}.plate .reg b{font-size:21px}}
+.brand-r{display:flex;align-items:center;gap:10px}
+.mine-btn{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 14px;font-weight:600;font-size:14px;cursor:pointer;color:var(--accent)}
+.fixed{height:44px;display:flex;align-items:center;padding:0 12px;border-radius:10px;background:var(--accent-soft);color:var(--fg);font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mine{display:grid;gap:10px}
+.mine-item{display:grid;gap:10px;padding:12px;border-radius:12px;background:var(--bg)}
+.mine-actions{display:flex;gap:8px}
+.btn2{flex:1;height:40px;border-radius:10px;border:1px solid var(--line);background:var(--surface);font-weight:600;cursor:pointer}
+.btn2.danger{color:#d0342c}
+.btn2:disabled,.submit:disabled{opacity:.6}
+.st{font-weight:600;font-size:12px;padding:2px 8px;border-radius:6px}
+.st-pending{background:rgba(232,160,20,.16);color:#c07c00}
+.st-active{background:rgba(31,138,76,.15);color:var(--ok)}
+.st-sold{background:var(--accent-soft);color:var(--accent)}
+.st-rejected{background:rgba(208,52,44,.14);color:#d0342c}
+.report{justify-self:center;color:var(--muted)}
+a.cbtn{cursor:pointer}
 </style>
 
 </head><body>
@@ -133,7 +149,7 @@ form{display:grid;gap:14px}
   <header>
     <div class="brand">
       <h1>Номер<b>ок</b></h1>
-      <small id="count"></small>
+      <div class="brand-r"><small id="count"></small><button type="button" class="mine-btn" id="mineBtn">Мои</button></div>
     </div>
     <label class="search" for="q">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
@@ -150,7 +166,7 @@ form{display:grid;gap:14px}
     </div>
   </header>
 
-  <div class="meta"><span id="found"></span><em>Примеры объявлений</em></div>
+  <div class="meta"><span id="found"></span></div>
   <main class="list" id="list"></main>
 </div>
 
@@ -163,37 +179,32 @@ form{display:grid;gap:14px}
 <div class="toast" id="toast" hidden></div>
 
 <script>
-const TG = window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData !== undefined ? window.Telegram.WebApp : null;
+const SB_URL = "https://rfruubhnlvvvztxhlvez.supabase.co";
+const SB_KEY = "sb_publishable_5AWwTmYpR3D35c5RSTD4GQ_3H6pTsDq";
+const FN_URL = SB_URL + "/functions/v1/nomerok";
+const BOT_LINK = "https://t.me/Nomerok95_bot";
+
+const TG = window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData ? window.Telegram.WebApp : null;
 const TGU = TG && TG.initDataUnsafe && TG.initDataUnsafe.user;
 if (TG) {
   TG.ready(); TG.expand();
   if (TG.colorScheme) document.documentElement.dataset.theme = TG.colorScheme;
   try { TG.setHeaderColor("bg_color"); } catch(e) {}
 }
-// Внутри Telegram ссылки открываем родными методами
 document.addEventListener("click", e => {
   const a = e.target.closest("a.cbtn"); if (!a || !TG) return;
   e.preventDefault();
   if (a.href.startsWith("https://t.me/")) TG.openTelegramLink(a.href); else TG.openLink(a.href);
 });
+
 const LETTERS = "АВЕКМНОРСТУХ";
 const LAT = {A:"А",B:"В",E:"Е",K:"К",M:"М",H:"Н",O:"О",P:"Р",C:"С",T:"Т",Y:"У",X:"Х"};
 const toCyr = s => s.toUpperCase().split("").map(c => LAT[c] || c).join("");
-const REGIONS = {"77":"Москва","97":"Москва","99":"Москва","177":"Москва","777":"Москва","799":"Москва","50":"Московская обл.","750":"Московская обл.","78":"Санкт-Петербург","178":"Санкт-Петербург","16":"Татарстан","116":"Татарстан","23":"Краснодарский край","93":"Краснодарский край","05":"Дагестан","54":"Новосибирская обл.","66":"Свердловская обл.","61":"Ростовская обл.","02":"Башкортостан","95":"Чечня"};
+const REGIONS = {"01":"Адыгея","02":"Башкортостан","102":"Башкортостан","05":"Дагестан","07":"Кабардино-Балкария","09":"Карачаево-Черкесия","15":"Северная Осетия","16":"Татарстан","116":"Татарстан","716":"Татарстан","20":"Чечня","95":"Чечня","06":"Ингушетия","23":"Краснодарский край","93":"Краснодарский край","123":"Краснодарский край","26":"Ставропольский край","126":"Ставропольский край","24":"Красноярский край","25":"Приморский край","34":"Волгоградская обл.","36":"Воронежская обл.","38":"Иркутская обл.","39":"Калининградская обл.","42":"Кемеровская обл.","50":"Московская обл.","90":"Московская обл.","150":"Московская обл.","190":"Московская обл.","750":"Московская обл.","52":"Нижегородская обл.","152":"Нижегородская обл.","54":"Новосибирская обл.","154":"Новосибирская обл.","55":"Омская обл.","59":"Пермский край","61":"Ростовская обл.","161":"Ростовская обл.","761":"Ростовская обл.","63":"Самарская обл.","163":"Самарская обл.","763":"Самарская обл.","64":"Саратовская обл.","66":"Свердловская обл.","96":"Свердловская обл.","196":"Свердловская обл.","72":"Тюменская обл.","74":"Челябинская обл.","174":"Челябинская обл.","77":"Москва","97":"Москва","99":"Москва","177":"Москва","197":"Москва","199":"Москва","777":"Москва","797":"Москва","799":"Москва","977":"Москва","78":"Санкт-Петербург","98":"Санкт-Петербург","178":"Санкт-Петербург","198":"Санкт-Петербург","47":"Ленинградская обл.","147":"Ленинградская обл.","82":"Крым","92":"Севастополь","86":"ХМАО — Югра","186":"ХМАО — Югра","89":"ЯНАО"};
 const regName = r => REGIONS[r] || "Регион " + r;
 
-let ads = [
-  {id:1,l1:"А",d:"777",l2:"АА",r:"77",price:3500000,name:"Тимур",city:"Москва",tg:"timur_nomera",wa:"79000000001",desc:"Номер на Mercedes S-класса, переоформление в МРЭО вместе с авто.",days:0},
-  {id:2,l1:"Е",d:"001",l2:"КХ",r:"99",price:2200000,name:"Артём",city:"Москва",tg:"artem_ekh",wa:"",desc:"Оформление через сохранение номера. Торг у машины.",days:1},
-  {id:3,l1:"О",d:"555",l2:"ОО",r:"05",price:450000,name:"Магомед",city:"Махачкала",tg:"",wa:"79000000003",desc:"Все буквы и цифры одинаковые. Пишите в WhatsApp.",days:1},
-  {id:4,l1:"М",d:"121",l2:"ММ",r:"78",price:180000,name:"Ольга",city:"Санкт-Петербург",tg:"olga_spb",wa:"79000000004",desc:"Зеркальный номер, стоит на Kia Rio.",days:2},
-  {id:5,l1:"В",d:"100",l2:"ОР",r:"16",price:95000,name:"Ильдар",city:"Казань",tg:"ildar116",wa:"79000000005",desc:"Круглые цифры. Переоформление при покупке авто.",days:3},
-  {id:6,l1:"К",d:"888",l2:"КК",r:"23",price:620000,name:"Сергей",city:"Краснодар",tg:"serg_kuban",wa:"79000000006",desc:"Три восьмёрки и одинаковые буквы.",days:3},
-  {id:7,l1:"Н",d:"707",l2:"НН",r:"54",price:140000,name:"Денис",city:"Новосибирск",tg:"denis_nsk",wa:"",desc:"Зеркальные цифры, регион 54.",days:4},
-  {id:8,l1:"Т",d:"333",l2:"ТТ",r:"66",price:390000,name:"Андрей",city:"Екатеринбург",tg:"andrey_ekb",wa:"79000000008",desc:"Отдам вместе с Camry или отдельно через переоформление.",days:5},
-  {id:9,l1:"Х",d:"010",l2:"ХХ",r:"61",price:210000,name:"Руслан",city:"Ростов-на-Дону",tg:"",wa:"79000000009",desc:"Зеркальный номер, все буквы Х.",days:6},
-  {id:10,l1:"С",d:"200",l2:"СС",r:"50",price:160000,name:"Павел",city:"Подольск",tg:"pavel_50",wa:"79000000010",desc:"Круглые цифры, одинаковые буквы.",days:8},
-];
+let ads = [];
+let loadState = "loading"; // loading | ok | error
 
 function tagsOf(a){
   const t=[], d=a.d;
@@ -206,13 +217,16 @@ function tagsOf(a){
 }
 const TAGS = {same:"Одинаковые цифры",mirror:"Зеркальные",round:"Круглые",zero:"Нули в начале",letters:"Одинаковые буквы"};
 const CHIPS = [["all","Все"],["same","Одинаковые цифры"],["mirror","Зеркальные"],["letters","Одинаковые буквы"],["round","Круглые"],["zero","Нули в начале"]];
+const STATUS = {pending:["На проверке","st-pending"],active:["Опубликовано","st-active"],sold:["Продано","st-sold"],rejected:["Отклонено","st-rejected"]};
 
 const fmt = n => new Intl.NumberFormat("ru-RU").format(n) + " ₽";
-const ago = d => d===0?"сегодня":d===1?"вчера":d<5?d+" дня назад":d+" дней назад";
-const esc = s => String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const daysAgo = iso => Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86400000));
+function ago(iso){ const d=daysAgo(iso); if(d===0) return "сегодня"; if(d===1) return "вчера"; const m10=d%10, m100=d%100; const w=(m10===1&&m100!==11)?"день":(m10>=2&&m10<=4&&(m100<12||m100>14))?"дня":"дней"; return d+" "+w+" назад"; }
+const esc = s => String(s ?? "").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const plural = (n,a,b,c) => { const m10=n%10,m100=n%100; return (m10===1&&m100!==11)?a:(m10>=2&&m10<=4&&(m100<12||m100>14))?b:c; };
 
 function plate(a,lg){
-  return `<span class="plate${lg?" lg":""}" aria-label="Номер ${a.l1}${a.d}${a.l2} ${a.r}">
+  return `<span class="plate${lg?" lg":""}" aria-label="Номер ${esc(a.l1)}${esc(a.d)}${esc(a.l2)} ${esc(a.r)}">
     <span class="num"><span class="l">${esc(a.l1)}</span>${esc(a.d)}<span class="l">${esc(a.l2)}</span></span>
     <span class="reg"><b>${esc(a.r)}</b><span class="rus">RUS <i class="flag"></i></span></span></span>`;
 }
@@ -220,16 +234,40 @@ function plate(a,lg){
 const state = {q:"",chip:"all",region:"all",sort:"new"};
 const $ = id => document.getElementById(id);
 
+/* ---------- сеть ---------- */
+async function loadAds(){
+  loadState="loading"; render();
+  try{
+    const r = await fetch(SB_URL+"/rest/v1/active_listings?select=*&order=published_at.desc&limit=500",{headers:{apikey:SB_KEY}});
+    if(!r.ok) throw new Error(await r.text());
+    ads = await r.json(); loadState="ok";
+  }catch(e){ console.error(e); loadState="error"; }
+  renderRegions(); render();
+}
+async function api(action, data={}){
+  if(!TG) throw new Error("Чтобы размещать объявления, откройте Номерок через бота в Telegram.");
+  const r = await fetch(FN_URL,{method:"POST",headers:{"Content-Type":"application/json",apikey:SB_KEY},body:JSON.stringify({action,initData:TG.initData,...data})});
+  let j={}; try{ j=await r.json(); }catch{}
+  if(!r.ok || j.error) throw new Error(j.error || "Сервер не ответил. Попробуйте ещё раз.");
+  return j;
+}
+
+/* ---------- лента ---------- */
 function renderChips(){
   $("chips").innerHTML = CHIPS.map(([k,v])=>`<button type="button" class="chip" data-k="${k}" aria-pressed="${state.chip===k}">${v}</button>`).join("");
 }
 function renderRegions(){
   const rs=[...new Set(ads.map(a=>a.r))].sort((a,b)=>a-b);
   const cur=state.region;
-  $("region").innerHTML = `<option value="all">Все регионы</option>` + rs.map(r=>`<option value="${r}">${r} · ${regName(r)}</option>`).join("");
+  $("region").innerHTML = `<option value="all">Все регионы</option>` + rs.map(r=>`<option value="${esc(r)}">${esc(r)} · ${esc(regName(r))}</option>`).join("");
   $("region").value = rs.includes(cur)?cur:"all";
+  if($("region").value!==cur) state.region="all";
 }
 function render(){
+  $("count").textContent = loadState==="ok" ? ads.length+" "+plural(ads.length,"объявление","объявления","объявлений") : "";
+  if(loadState==="loading"){ $("found").textContent=""; $("list").innerHTML=`<div class="empty">Загружаем объявления…</div>`; return; }
+  if(loadState==="error"){ $("found").textContent=""; $("list").innerHTML=`<div class="empty">Не удалось загрузить объявления. Проверьте интернет.<br><button class="linkbtn" type="button" id="retry">Повторить</button></div>`; return; }
+  if(!ads.length){ $("found").textContent=""; $("list").innerHTML=`<div class="empty"><b>Пока нет ни одного объявления.</b><br>Разместите свой номер первым — кнопка внизу.</div>`; return; }
   const q = toCyr(state.q.replace(/\s+/g,""));
   let list = ads.filter(a=>{
     if(state.chip!=="all" && !tagsOf(a).includes(state.chip)) return false;
@@ -237,90 +275,138 @@ function render(){
     if(q){ const full=(a.l1+a.d+a.l2+a.r); if(!full.includes(q) && !(a.l1+a.l2).includes(q) && a.r!==q) return false; }
     return true;
   });
-  list.sort((a,b)=>state.sort==="cheap"?a.price-b.price:state.sort==="exp"?b.price-a.price:a.days-b.days);
-  $("count").textContent = ads.length + " объявлений";
-  $("found").textContent = list.length ? "Найдено: "+list.length : "";
+  list.sort((a,b)=>state.sort==="cheap"?a.price-b.price:state.sort==="exp"?b.price-a.price:new Date(b.published_at)-new Date(a.published_at));
+  $("found").textContent = "Найдено: "+list.length;
   $("list").innerHTML = list.length ? list.map(a=>`
     <button type="button" class="card" data-id="${a.id}">
       <div class="card-top">${plate(a)}<span class="price">${fmt(a.price)}</span></div>
       ${tagsOf(a).length?`<div class="tags">${tagsOf(a).map(t=>`<span class="tag">${TAGS[t]}</span>`).join("")}</div>`:""}
-      <div class="card-sub"><span>${esc(a.city)} · ${esc(a.name)}</span><span>${ago(a.days)}</span></div>
+      <div class="card-sub"><span>${esc(a.city || regName(a.r))} · ${esc(a.seller_name)}</span><span>${ago(a.published_at)}</span></div>
     </button>`).join("")
     : `<div class="empty">Ничего не нашлось.<br>Попробуйте другой регион или уберите фильтр.</div>`;
 }
 
-/* Шторки */
+/* ---------- шторки ---------- */
 function openSheet(html){ $("scrim").innerHTML=`<div class="sheet" role="dialog" aria-modal="true">${html}</div>`; $("scrim").hidden=false; document.body.style.overflow="hidden"; }
 function closeSheet(){ $("scrim").hidden=true; $("scrim").innerHTML=""; document.body.style.overflow=""; }
 $("scrim").addEventListener("click",e=>{ if(e.target.id==="scrim"||e.target.closest(".x")) closeSheet(); });
 document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeSheet(); });
+const head = t => `<div class="grip"></div><div class="sheet-head"><h2>${t}</h2><button class="x" type="button" aria-label="Закрыть">✕</button></div>`;
 
 function showAd(a){
   const waNice = a.wa ? "+"+a.wa.replace(/^(\d)(\d{3})(\d{3})(\d{2})(\d{2})$/,"$1 $2 $3-$4-$5") : "";
+  const msg = "Здравствуйте! Пишу по объявлению в Номерке о номере "+a.l1+a.d+a.l2+" "+a.r;
   openSheet(`
-    <div class="grip"></div>
-    <div class="sheet-head"><h2>${fmt(a.price)}</h2><button class="x" type="button" aria-label="Закрыть">✕</button></div>
+    ${head(fmt(a.price))}
     <div class="center">${plate(a,true)}</div>
     ${tagsOf(a).length?`<div class="tags">${tagsOf(a).map(t=>`<span class="tag">${TAGS[t]}</span>`).join("")}</div>`:""}
-    <dl class="facts"><dt>Регион</dt><dd>${a.r} · ${regName(a.r)}</dd><dt>Город</dt><dd>${esc(a.city)}</dd><dt>Размещено</dt><dd>${ago(a.days)}</dd></dl>
-    ${a.desc?`<p class="desc">${esc(a.desc)}</p>`:""}
-    <div class="seller"><div class="ava">${esc(a.name[0])}</div><div><b>${esc(a.name)}</b><span>Частное лицо</span></div></div>
+    <dl class="facts"><dt>Регион</dt><dd>${esc(a.r)} · ${esc(regName(a.r))}</dd>${a.city?`<dt>Город</dt><dd>${esc(a.city)}</dd>`:""}<dt>Размещено</dt><dd>${ago(a.published_at)}</dd></dl>
+    ${a.descr?`<p class="desc">${esc(a.descr)}</p>`:""}
+    <div class="seller"><div class="ava">${esc((a.seller_name||"?")[0])}</div><div><b>${esc(a.seller_name)}</b><span>Частное лицо</span></div></div>
     <div class="contacts">
-      ${a.tg?`<a class="cbtn tg" href="https://t.me/${esc(a.tg)}" target="_blank" rel="noopener">Написать в Telegram</a>
-        <div class="copyrow">Telegram: <code>@${esc(a.tg)}</code><button class="linkbtn" data-copy="@${esc(a.tg)}" type="button">Скопировать</button></div>`:""}
-      ${a.wa?`<a class="cbtn wa" href="https://wa.me/${esc(a.wa)}?text=${encodeURIComponent("Здравствуйте! Пишу по объявлению о номере "+a.l1+a.d+a.l2+" "+a.r)}" target="_blank" rel="noopener">Написать в WhatsApp</a>
+      ${a.seller_username?`<a class="cbtn tg" href="https://t.me/${esc(a.seller_username)}" target="_blank" rel="noopener">Написать в Telegram</a>
+        <div class="copyrow">Telegram: <code>@${esc(a.seller_username)}</code><button class="linkbtn" data-copy="@${esc(a.seller_username)}" type="button">Скопировать</button></div>`:""}
+      ${a.wa?`<a class="cbtn wa" href="https://wa.me/${esc(a.wa)}?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">Написать в WhatsApp</a>
         <div class="copyrow">WhatsApp: <code>${waNice}</code><button class="linkbtn" data-copy="${waNice}" type="button">Скопировать</button></div>`:""}
     </div>
-    <p class="note">Это пример объявления, контакты вымышленные. Номер передаётся вместе с автомобилем или через сохранение номера в ГИБДД, а не как отдельный товар.</p>`);
+    <p class="note">Номер переоформляется вместе с автомобилем или через сохранение номера в ГИБДД. Не переводите предоплату незнакомым людям.</p>
+    <button class="linkbtn report" type="button" data-report="${a.id}">Пожаловаться на объявление</button>`);
+}
+
+function showReport(id){
+  const a = ads.find(x=>x.id==id); if(!a) return;
+  openSheet(`${head("Жалоба")}
+    <div class="center">${plate(a,true)}</div>
+    <form id="rf" novalidate>
+      <div class="f"><label for="r-why">Что не так?</label>
+        <select id="r-why"><option>Мошенничество</option><option>Номер уже продан</option><option>Неверная цена или данные</option><option>Другое</option></select></div>
+      <div class="f"><label for="r-txt">Подробнее (необязательно)</label><textarea id="r-txt"></textarea></div>
+      <span class="err" id="r-err" hidden></span>
+      <button class="submit" type="submit">Отправить жалобу</button>
+    </form>`);
+  $("rf").addEventListener("submit",async e=>{
+    e.preventDefault(); const btn=e.target.querySelector(".submit"); btn.disabled=true;
+    try{ await api("report",{id:a.id,reason:$("r-why").value+($("r-txt").value.trim()?": "+$("r-txt").value.trim():"")}); closeSheet(); toast("Жалоба отправлена модератору"); }
+    catch(err){ $("r-err").textContent=err.message; $("r-err").hidden=false; btn.disabled=false; }
+  });
 }
 
 $("scrim").addEventListener("click",async e=>{
-  const b=e.target.closest("[data-copy]"); if(!b) return;
-  try{ await navigator.clipboard.writeText(b.dataset.copy); toast("Скопировано"); }
-  catch{ const c=b.previousElementSibling; const r=document.createRange(); r.selectNodeContents(c); const s=getSelection(); s.removeAllRanges(); s.addRange(r); toast("Выделено — скопируйте вручную"); }
+  const b=e.target.closest("[data-copy]");
+  if(b){
+    try{ await navigator.clipboard.writeText(b.dataset.copy); toast("Скопировано"); }
+    catch{ const c=b.previousElementSibling; const r=document.createRange(); r.selectNodeContents(c); const s=getSelection(); s.removeAllRanges(); s.addRange(r); toast("Выделено — скопируйте вручную"); }
+    return;
+  }
+  const rp=e.target.closest("[data-report]"); if(rp){ showReport(rp.dataset.report); return; }
+  const act=e.target.closest("[data-act]");
+  if(act){
+    const {act:kind,id}=act.dataset;
+    if(act.dataset.confirm!=="1"){ act.dataset.confirm="1"; act.dataset.label=act.textContent; act.textContent=kind==="sold"?"Точно продано?":"Точно снять?"; setTimeout(()=>{ if(act.isConnected){ act.dataset.confirm=""; act.textContent=act.dataset.label; } },3000); return; }
+    act.disabled=true;
+    try{ await api(kind,{id:Number(id)}); toast(kind==="sold"?"Отмечено как продано":"Объявление снято"); loadAds(); showMine(); }
+    catch(err){ toast(err.message); act.disabled=false; }
+  }
 });
 
+/* ---------- мои объявления ---------- */
+async function showMine(){
+  if(!TG){ openSheet(`${head("Мои объявления")}<p class="desc">Свои объявления можно смотреть, когда Номерок открыт через бота в Telegram.</p><a class="cbtn tg" href="${BOT_LINK}" target="_blank" rel="noopener">Открыть бота</a>`); return; }
+  openSheet(`${head("Мои объявления")}<div class="empty" id="mine">Загружаем…</div>`);
+  try{
+    const {items} = await api("my");
+    if(!$("mine")) return;
+    $("mine").outerHTML = items.length ? `<div class="mine">${items.map(a=>{
+      const [label,cls]=STATUS[a.status]||[a.status,""];
+      const canAct = a.status==="pending"||a.status==="active";
+      return `<div class="mine-item">
+        <div class="card-top">${plate(a)}<span class="price">${fmt(a.price)}</span></div>
+        <div class="card-sub"><span class="st ${cls}">${label}</span><span>${ago(a.created_at)}</span></div>
+        ${canAct?`<div class="mine-actions">${a.status==="active"?`<button type="button" class="btn2" data-act="sold" data-id="${a.id}">Продано</button>`:""}<button type="button" class="btn2 danger" data-act="remove" data-id="${a.id}">Снять</button></div>`:""}
+      </div>`;}).join("")}</div>`
+      : `<div class="empty" id="mine">У вас пока нет объявлений.</div>`;
+  }catch(err){ if($("mine")) $("mine").textContent=err.message; }
+}
+
+/* ---------- форма ---------- */
 function showForm(){
+  if(!TG){ openSheet(`${head("Разместить номер")}<p class="desc">Объявления размещаются через Telegram: так покупатели видят ваш настоящий контакт, а мы защищаем доску от фейков.</p><a class="cbtn tg" href="${BOT_LINK}" target="_blank" rel="noopener">Открыть бота</a>`); return; }
+  const uname = TGU && TGU.username;
   openSheet(`
-    <div class="grip"></div>
-    <div class="sheet-head"><h2>Новое объявление</h2><button class="x" type="button" aria-label="Закрыть">✕</button></div>
+    ${head("Новое объявление")}
     <div class="center" id="pv"></div>
     <form id="f" novalidate>
       <div class="f"><label>Номер</label>
         <div class="plate-in">
-          <input id="f-l1" maxlength="1" placeholder="А" aria-label="Первая буква" value="Р">
-          <input id="f-d" maxlength="3" inputmode="numeric" placeholder="123" aria-label="Цифры" value="444">
-          <input id="f-l2" maxlength="2" placeholder="ВС" aria-label="Две буквы" value="РР">
-          <input id="f-r" maxlength="3" inputmode="numeric" placeholder="77" aria-label="Регион" value="77">
+          <input id="f-l1" maxlength="1" placeholder="А" aria-label="Первая буква" autocomplete="off">
+          <input id="f-d" maxlength="3" inputmode="numeric" placeholder="123" aria-label="Цифры" autocomplete="off">
+          <input id="f-l2" maxlength="2" placeholder="ВС" aria-label="Две буквы" autocomplete="off">
+          <input id="f-r" maxlength="3" inputmode="numeric" placeholder="77" aria-label="Регион" autocomplete="off">
         </div>
-        <span class="hint">Буквы только: ${LETTERS.split("").join(" ")}</span>
+        <span class="hint">Буквы только: ${LETTERS.split("").join(" ")}. Можно набирать латиницей.</span>
         <span class="err" id="e-plate" hidden></span>
       </div>
       <div class="two">
-        <div class="f"><label for="f-price">Цена, ₽</label><input id="f-price" inputmode="numeric" value="250 000"></div>
-        <div class="f"><label for="f-city">Город</label><input id="f-city" value="Москва"></div>
+        <div class="f"><label for="f-price">Цена, ₽</label><input id="f-price" inputmode="numeric" placeholder="250 000"></div>
+        <div class="f"><label for="f-city">Город</label><input id="f-city" placeholder="Москва" maxlength="60"></div>
       </div>
-      <div class="f"><label for="f-name">Ваше имя</label><input id="f-name" value="Иван"></div>
-      <div class="two">
-        <div class="f"><label for="f-tg">Telegram</label><input id="f-tg" placeholder="@username" value="@ivan_example"></div>
-        <div class="f"><label for="f-wa">WhatsApp</label><input id="f-wa" inputmode="tel" placeholder="+7 900 000-00-00"></div>
-      </div>
+      <div class="f"><label>Telegram для связи</label>
+        <div class="fixed">${uname?"@"+esc(uname):"У вас нет @username в Telegram"}</div>
+        <span class="hint">${uname?"Берётся из вашего Telegram автоматически.":"Укажите WhatsApp ниже или задайте username в настройках Telegram."}</span></div>
+      <div class="f"><label for="f-wa">WhatsApp ${uname?"(необязательно)":""}</label><input id="f-wa" inputmode="tel" placeholder="+7 900 000-00-00"></div>
       <span class="err" id="e-contact" hidden></span>
-      <div class="f"><label for="f-desc">Описание</label><textarea id="f-desc" placeholder="Как переоформляется, есть ли торг">Одинаковые цифры и буквы. Переоформление вместе с авто, торг уместен.</textarea></div>
-      <button class="submit" type="submit">Опубликовать</button>
-      <p class="note">В прототипе объявление появится только у вас. В рабочей версии оно будет сохраняться в базу.</p>
+      <div class="f"><label for="f-desc">Описание</label><textarea id="f-desc" maxlength="500" placeholder="Как переоформляется, есть ли торг"></textarea></div>
+      <span class="err" id="e-send" hidden></span>
+      <button class="submit" type="submit">Отправить на проверку</button>
+      <p class="note">Объявление появится в ленте после проверки модератором. Обычно это занимает до нескольких часов.</p>
     </form>`);
-  if (TGU) {
-    $("f-name").value = TGU.first_name || "";
-    $("f-tg").value = TGU.username ? "@" + TGU.username : "";
-  }
   const v = id => $(id).value.trim();
   const upd = () => {
     ["f-l1","f-l2"].forEach(id=>{ const el=$(id); const c=toCyr(el.value); if(c!==el.value) el.value=c; });
     $("pv").innerHTML = plate({l1:v("f-l1")||"_",d:v("f-d")||"___",l2:v("f-l2")||"__",r:v("f-r")||"__"},true);
   };
   $("f").addEventListener("input",upd); upd();
-  $("f").addEventListener("submit",e=>{
+  $("f").addEventListener("submit",async e=>{
     e.preventDefault();
     const l1=toCyr(v("f-l1")), d=v("f-d"), l2=toCyr(v("f-l2")), r=v("f-r");
     const re = new RegExp(`^[${LETTERS}]$`), re2 = new RegExp(`^[${LETTERS}]{2}$`);
@@ -329,25 +415,31 @@ function showForm(){
     else if(!/^\d{3}$/.test(d)||d==="000") err="Нужно три цифры, 000 не выдаётся.";
     else if(!/^\d{2,3}$/.test(r)) err="Код региона — 2 или 3 цифры.";
     $("e-plate").textContent=err; $("e-plate").hidden=!err;
-    const tg=v("f-tg").replace(/^@/,"").replace(/^https?:\/\/t\.me\//,""), wa=v("f-wa").replace(/\D/g,"").replace(/^8/,"7");
-    const cerr = (!tg && !wa) ? "Укажите хотя бы один контакт: Telegram или WhatsApp." : (wa && wa.length!==11 ? "Номер WhatsApp: 11 цифр, например +7 900 000-00-00." : "");
+    const wa=v("f-wa").replace(/\D/g,"").replace(/^8/,"7");
+    const price=Number(v("f-price").replace(/\D/g,""));
+    let cerr = (!uname && !wa) ? "Укажите номер WhatsApp, иначе покупатели не смогут связаться." : (wa && !/^7\d{10}$/.test(wa) ? "Номер WhatsApp: 11 цифр, например +7 900 000-00-00." : "");
+    if(!cerr && !price) cerr="Укажите цену.";
     $("e-contact").textContent=cerr; $("e-contact").hidden=!cerr;
     if(err||cerr) return;
-    ads.unshift({id:Date.now(),l1,d,l2,r,price:+v("f-price").replace(/\D/g,"")||0,name:v("f-name")||"Продавец",city:v("f-city")||regName(r),tg,wa,desc:v("f-desc"),days:0});
-    closeSheet(); renderRegions(); state.sort="new"; $("sort").value="new"; render(); window.scrollTo({top:0}); toast("Объявление опубликовано");
+    const btn=e.target.querySelector(".submit"); btn.disabled=true; btn.textContent="Отправляем…";
+    try{
+      await api("create",{l1,d,l2,r,price,city:v("f-city"),descr:v("f-desc"),wa});
+      closeSheet(); toast("Отправлено на проверку. Бот сообщит, когда объявление опубликуют.");
+    }catch(er){ $("e-send").textContent=er.message; $("e-send").hidden=false; btn.disabled=false; btn.textContent="Отправить на проверку"; }
   });
 }
 
-let tt; function toast(t){ const el=$("toast"); el.textContent=t; el.hidden=false; clearTimeout(tt); tt=setTimeout(()=>el.hidden=true,2200); }
+let tt; function toast(t){ const el=$("toast"); el.textContent=t; el.hidden=false; clearTimeout(tt); tt=setTimeout(()=>el.hidden=true,3200); }
 
 $("chips").addEventListener("click",e=>{ const b=e.target.closest(".chip"); if(!b) return; state.chip=b.dataset.k; renderChips(); render(); });
 $("q").addEventListener("input",e=>{ state.q=e.target.value; render(); });
 $("region").addEventListener("change",e=>{ state.region=e.target.value; render(); });
 $("sort").addEventListener("change",e=>{ state.sort=e.target.value; render(); });
-$("list").addEventListener("click",e=>{ const c=e.target.closest(".card"); if(c) showAd(ads.find(a=>a.id==c.dataset.id)); });
+$("list").addEventListener("click",e=>{ if(e.target.id==="retry"){ loadAds(); return; } const c=e.target.closest(".card"); if(c) showAd(ads.find(a=>a.id==c.dataset.id)); });
 $("add").addEventListener("click",showForm);
+$("mineBtn").addEventListener("click",showMine);
 
-renderChips(); renderRegions(); render();
+renderChips(); renderRegions(); loadAds();
 </script>
 
 </body></html>

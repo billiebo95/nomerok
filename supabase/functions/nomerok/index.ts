@@ -1,0 +1,280 @@
+// Номерок: серверная функция для Supabase Edge Functions.
+// Имя функции в Supabase должно быть: nomerok
+// Секреты (Edge Functions → Secrets): BOT_TOKEN, ADMIN_CHAT_ID
+//
+// Что делает:
+//  1. Принимает запросы мини-приложения: создать объявление, мои объявления,
+//     отметить «Продано», снять, пожаловаться. Каждый запрос проверяется
+//     подписью Telegram, поэтому подделать продавца нельзя.
+//  2. Работает вебхуком бота: /start, /id и кнопки «Одобрить / Отклонить / Снять» у админа.
+//  3. GET ?setup=1 — один раз подключает вебхук и кнопку меню бота.
+
+const PROJECT_URL = "https://rfruubhnlvvvztxhlvez.supabase.co";
+const APP_URL = "https://billiebo95.github.io/nomerok/";
+const FN_URL = `${PROJECT_URL}/functions/v1/nomerok`;
+
+const BOT = Deno.env.get("BOT_TOKEN") ?? "";
+const ADMIN = (Deno.env.get("ADMIN_CHAT_ID") ?? "").trim();
+const KEY = Deno.env.get("SB_SECRET_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+
+const LETTERS = "АВЕКМНОРСТУХ";
+const MAX_PENDING = 3;
+
+const cors = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "content-type, apikey, authorization, x-client-info",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+};
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
+
+// ---------- крипто ----------
+const enc = new TextEncoder();
+async function hmac(key: Uint8Array, data: string) {
+  const k = await crypto.subtle.importKey("raw", key as BufferSource, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return new Uint8Array(await crypto.subtle.sign("HMAC", k, enc.encode(data)));
+}
+const hex = (b: Uint8Array) => [...b].map((x) => x.toString(16).padStart(2, "0")).join("");
+async function sha256(s: string) {
+  return hex(new Uint8Array(await crypto.subtle.digest("SHA-256", enc.encode(s))));
+}
+
+type TgUser = { id: number; first_name?: string; last_name?: string; username?: string };
+
+// Проверка initData мини-приложения по документации Telegram
+async function verifyInitData(initData: string): Promise<TgUser | null> {
+  if (!initData || !BOT) return null;
+  const p = new URLSearchParams(initData);
+  const hash = p.get("hash");
+  if (!hash) return null;
+  p.delete("hash");
+  const dcs = [...p.entries()]
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([k, v]) => `${k}=${v}`)
+    .join("\n");
+  const secret = await hmac(enc.encode("WebAppData"), BOT);
+  const calc = hex(await hmac(secret, dcs));
+  if (calc !== hash) return null;
+  const authDate = Number(p.get("auth_date") || 0);
+  if (!authDate || Date.now() / 1000 - authDate > 86400) return null; // сессия старше суток
+  try {
+    return JSON.parse(p.get("user") || "null");
+  } catch {
+    return null;
+  }
+}
+
+// ---------- база ----------
+async function db(path: string, init: RequestInit = {}) {
+  const h: Record<string, string> = { apikey: KEY, "Content-Type": "application/json", Prefer: "return=representation" };
+  if (KEY.startsWith("eyJ")) h.Authorization = `Bearer ${KEY}`;
+  const r = await fetch(`${PROJECT_URL}/rest/v1/${path}`, { ...init, headers: { ...h, ...(init.headers as Record<string, string> || {}) } });
+  const t = await r.text();
+  if (!r.ok) throw new Error(`DB ${r.status}: ${t}`);
+  return t ? JSON.parse(t) : null;
+}
+
+// ---------- Telegram ----------
+async function tg(method: string, body: unknown) {
+  const r = await fetch(`https://api.telegram.org/bot${BOT}/${method}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return r.json();
+}
+const h = (s: unknown) => String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]!));
+const plateText = (a: any) => `${a.l1}${a.d}${a.l2} ${a.r}`;
+const money = (n: number) => new Intl.NumberFormat("ru-RU").format(n) + " ₽";
+
+function adminCard(a: any, title: string) {
+  return [
+    `<b>${title}</b>`,
+    `<b>${h(plateText(a))}</b> — ${money(a.price)}`,
+    a.city ? `Город: ${h(a.city)}` : "",
+    a.descr ? `Описание: ${h(a.descr)}` : "",
+    `Продавец: ${h(a.seller_name)}${a.seller_username ? " @" + h(a.seller_username) : ""} (ID ${a.seller_tg_id})`,
+    a.wa ? `WhatsApp: +${h(a.wa)}` : "",
+    `Объявление №${a.id}`,
+  ].filter(Boolean).join("\n");
+}
+
+async function notifySeller(a: any, text: string) {
+  try {
+    await tg("sendMessage", { chat_id: a.seller_tg_id, text, parse_mode: "HTML" });
+  } catch { /* продавец мог не запускать бота */ }
+}
+
+// ---------- действия мини-приложения ----------
+const SELLER_FIELDS = "id,l1,d,l2,r,price,city,descr,wa,status,created_at,approved_at";
+
+async function handleApp(body: any) {
+  const user = await verifyInitData(String(body.initData || ""));
+  if (!user) return json({ error: "Откройте приложение через бота в Telegram." }, 401);
+  const uid = user.id;
+
+  switch (body.action) {
+    case "create": {
+      const l1 = String(body.l1 || "").toUpperCase();
+      const d = String(body.d || "");
+      const l2 = String(body.l2 || "").toUpperCase();
+      const r = String(body.r || "");
+      const price = Math.round(Number(body.price));
+      const city = String(body.city || "").trim().slice(0, 60);
+      const descr = String(body.descr || "").trim().slice(0, 500);
+      const wa = String(body.wa || "").replace(/\D/g, "").replace(/^8/, "7");
+
+      if (!new RegExp(`^[${LETTERS}]$`).test(l1) || !new RegExp(`^[${LETTERS}]{2}$`).test(l2))
+        return json({ error: "Проверьте буквы номера." }, 400);
+      if (!/^\d{3}$/.test(d) || d === "000") return json({ error: "Нужно три цифры номера." }, 400);
+      if (!/^\d{2,3}$/.test(r)) return json({ error: "Код региона: 2 или 3 цифры." }, 400);
+      if (!Number.isFinite(price) || price < 0 || price > 1e10) return json({ error: "Проверьте цену." }, 400);
+      if (wa && !/^7\d{10}$/.test(wa)) return json({ error: "Номер WhatsApp: 11 цифр, начиная с 7." }, 400);
+      if (!user.username && !wa)
+        return json({ error: "У вас нет @username в Telegram. Укажите номер WhatsApp, чтобы покупатели могли связаться." }, 400);
+
+      const pending = await db(`listings?select=id&seller_tg_id=eq.${uid}&status=eq.pending`);
+      if (pending.length >= MAX_PENDING)
+        return json({ error: "У вас уже есть объявления на проверке. Дождитесь решения модератора." }, 429);
+
+      const [row] = await db("listings", {
+        method: "POST",
+        body: JSON.stringify({
+          l1, d, l2, r, price, city, descr, wa: wa || null,
+          seller_tg_id: uid,
+          seller_name: [user.first_name, user.last_name].filter(Boolean).join(" ").slice(0, 60) || "Продавец",
+          seller_username: user.username || null,
+        }),
+      });
+
+      if (ADMIN) {
+        await tg("sendMessage", {
+          chat_id: ADMIN,
+          text: adminCard(row, "Новое объявление на проверку"),
+          parse_mode: "HTML",
+          reply_markup: { inline_keyboard: [[
+            { text: "✅ Одобрить", callback_data: `ok:${row.id}` },
+            { text: "❌ Отклонить", callback_data: `no:${row.id}` },
+          ]] },
+        });
+      }
+      return json({ ok: true, id: row.id });
+    }
+
+    case "my": {
+      const rows = await db(`listings?select=${SELLER_FIELDS}&seller_tg_id=eq.${uid}&status=neq.removed&order=created_at.desc`);
+      return json({ items: rows });
+    }
+
+    case "sold":
+    case "remove": {
+      const id = Number(body.id);
+      if (!Number.isInteger(id)) return json({ error: "Нет такого объявления." }, 400);
+      const status = body.action === "sold" ? "sold" : "removed";
+      const rows = await db(`listings?id=eq.${id}&seller_tg_id=eq.${uid}&status=in.(pending,active)`, {
+        method: "PATCH",
+        body: JSON.stringify({ status }),
+      });
+      if (!rows.length) return json({ error: "Объявление не найдено или уже снято." }, 404);
+      return json({ ok: true });
+    }
+
+    case "report": {
+      const id = Number(body.id);
+      const reason = String(body.reason || "").trim().slice(0, 300);
+      const [a] = await db(`listings?select=*&id=eq.${id}&status=eq.active`);
+      if (!a) return json({ error: "Объявление не найдено." }, 404);
+      if (ADMIN) {
+        await tg("sendMessage", {
+          chat_id: ADMIN,
+          text: adminCard(a, "⚠️ Жалоба на объявление") +
+            `\n\nОт: ${h(user.first_name)}${user.username ? " @" + h(user.username) : ""} (ID ${uid})` +
+            (reason ? `\nПричина: ${h(reason)}` : ""),
+          parse_mode: "HTML",
+          reply_markup: { inline_keyboard: [[{ text: "🗑 Снять объявление", callback_data: `rm:${a.id}` }]] },
+        });
+      }
+      return json({ ok: true });
+    }
+  }
+  return json({ error: "Неизвестное действие." }, 400);
+}
+
+// ---------- вебхук бота ----------
+async function handleBot(update: any) {
+  const msg = update.message;
+  if (msg?.text) {
+    const chat = msg.chat.id;
+    const text: string = msg.text.trim();
+    if (text.startsWith("/id")) {
+      await tg("sendMessage", { chat_id: chat, text: `Ваш Telegram ID: <code>${msg.from.id}</code>`, parse_mode: "HTML" });
+    } else if (text.startsWith("/start")) {
+      await tg("sendMessage", {
+        chat_id: chat,
+        text: "Номерок — объявления о продаже красивых автономеров.\n\nСмотрите номера, связывайтесь с продавцами напрямую или разместите свой.",
+        reply_markup: { inline_keyboard: [[{ text: "Открыть Номерок", web_app: { url: APP_URL } }]] },
+      });
+    }
+    return;
+  }
+
+  const cq = update.callback_query;
+  if (cq) {
+    if (!ADMIN || String(cq.from.id) !== ADMIN) {
+      await tg("answerCallbackQuery", { callback_query_id: cq.id, text: "Нет доступа" });
+      return;
+    }
+    const [act, idStr] = String(cq.data || "").split(":");
+    const id = Number(idStr);
+    let patch: Record<string, unknown> | null = null;
+    let from = "";
+    let label = "";
+    if (act === "ok") { patch = { status: "active", approved_at: new Date().toISOString() }; from = "pending"; label = "✅ Одобрено"; }
+    if (act === "no") { patch = { status: "rejected" }; from = "pending"; label = "❌ Отклонено"; }
+    if (act === "rm") { patch = { status: "removed" }; from = "active"; label = "🗑 Снято"; }
+    if (!patch || !Number.isInteger(id)) {
+      await tg("answerCallbackQuery", { callback_query_id: cq.id });
+      return;
+    }
+    const rows = await db(`listings?id=eq.${id}&status=eq.${from}`, { method: "PATCH", body: JSON.stringify(patch) });
+    const a = rows[0];
+    await tg("answerCallbackQuery", { callback_query_id: cq.id, text: a ? label : "Уже обработано" });
+    if (cq.message) {
+      await tg("editMessageReplyMarkup", { chat_id: cq.message.chat.id, message_id: cq.message.message_id, reply_markup: { inline_keyboard: [] } });
+      await tg("sendMessage", { chat_id: cq.message.chat.id, reply_to_message_id: cq.message.message_id, text: a ? `${label}: ${plateText(a)}` : "Это объявление уже обработано." });
+    }
+    if (a && act === "ok") await notifySeller(a, `✅ Ваше объявление <b>${h(plateText(a))}</b> опубликовано в Номерке.`);
+    if (a && act === "no") await notifySeller(a, `❌ Объявление <b>${h(plateText(a))}</b> не прошло проверку.`);
+    if (a && act === "rm") await notifySeller(a, `Объявление <b>${h(plateText(a))}</b> снято модератором после жалобы.`);
+  }
+}
+
+// ---------- точка входа ----------
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
+  if (!BOT) return json({ error: "Не задан секрет BOT_TOKEN." }, 500);
+  const whSecret = (await sha256("wh:" + BOT)).slice(0, 48);
+
+  try {
+    const url = new URL(req.url);
+    if (req.method === "GET" && url.searchParams.get("setup") === "1") {
+      const hook = await tg("setWebhook", { url: FN_URL, secret_token: whSecret, allowed_updates: ["message", "callback_query"], drop_pending_updates: true });
+      const menu = await tg("setChatMenuButton", { menu_button: { type: "web_app", text: "Открыть", web_app: { url: APP_URL } } });
+      const cmds = await tg("setMyCommands", { commands: [{ command: "start", description: "Открыть Номерок" }] });
+      return json({ webhook: hook.ok, menu_button: menu.ok, commands: cmds.ok, admin_set: Boolean(ADMIN), details: { hook, menu } });
+    }
+    if (req.method !== "POST") return json({ ok: true, name: "nomerok" });
+
+    // Запрос от Telegram
+    if (req.headers.get("x-telegram-bot-api-secret-token")) {
+      if (req.headers.get("x-telegram-bot-api-secret-token") !== whSecret) return json({ error: "forbidden" }, 403);
+      await handleBot(await req.json());
+      return json({ ok: true });
+    }
+    // Запрос от мини-приложения
+    return await handleApp(await req.json());
+  } catch (e) {
+    console.error(e);
+    return json({ error: "Ошибка сервера. Попробуйте ещё раз." }, 500);
+  }
+});
