@@ -103,6 +103,38 @@ async function db(path: string, init: RequestInit = {}) {
   return t ? JSON.parse(t) : null;
 }
 
+// ОЦЕНКА НОМЕРА (общий код для сайта и функции)
+const EST_ELITE = ["АМР","ЕКХ","ММР","КМР","ОМР","ВОР","ХКХ","ЕРЕ","САС","ТМР"];
+const EST_REG: Record<string, number> = {"77":1.5,"97":1.5,"99":1.5,"177":1.5,"197":1.5,"199":1.5,"777":1.4,"797":1.4,"799":1.4,"977":1.4,"78":1.25,"98":1.25,"178":1.25,"198":1.25,"50":1.15,"95":1.3,"20":1.3,"05":1.3,"06":1.2,"07":1.2,"15":1.2,"09":1.15,"26":1.1,"23":1.1};
+function estimatePlate(l1: string, d: string, l2: string, r: string) {
+  const L = l1 + l2, why: string[] = [];
+  let lo: number, hi: number;
+  const same = d[0] === d[1] && d[1] === d[2];
+  if (d === "001") { lo = 400000; hi = 1500000; why.push("номер 001"); }
+  else if (d === "007") { lo = 300000; hi = 1000000; why.push("номер 007"); }
+  else if (/^00[1-9]$/.test(d)) { lo = 150000; hi = 500000; why.push("нули в начале"); }
+  else if (d === "777") { lo = 300000; hi = 1000000; why.push("три семёрки"); }
+  else if (same) { lo = 100000; hi = 400000; why.push("одинаковые цифры"); }
+  else if (/^[1-9]00$/.test(d)) { lo = 50000; hi = 150000; why.push("круглые цифры"); }
+  else if (/^0[1-9]0$/.test(d)) { lo = 50000; hi = 150000; why.push("красивые нули"); }
+  else if (d[0] === d[2]) { lo = 15000; hi = 50000; why.push("зеркальные цифры"); }
+  else if ("0123456789".includes(d) || "9876543210".includes(d)) { lo = 15000; hi = 40000; why.push("цифры по порядку"); }
+  else if (d[0] === d[1] || d[1] === d[2]) { lo = 5000; hi = 20000; why.push("две одинаковые цифры"); }
+  else { lo = 0; hi = 10000; }
+  const letSame = l1 === l2[0] && l2[0] === l2[1];
+  if (EST_ELITE.includes(L)) { lo = Math.max(lo * 4, 100000); hi = Math.max(hi * 4, 500000); why.push("серия " + L); }
+  else if (letSame) { lo = Math.max(lo * 3, 30000); hi = Math.max(hi * 3, 100000); why.push("одинаковые буквы"); }
+  else if (l2[0] === l2[1]) { lo *= 1.3; hi *= 1.3; }
+  const k = EST_REG[r] || 1;
+  if (k > 1.1 && hi > 20000) why.push("популярный регион");
+  lo *= k; hi *= k;
+  const round = (x: number) => x < 10000 ? Math.round(x / 1000) * 1000 : x < 100000 ? Math.round(x / 5000) * 5000 : x < 1000000 ? Math.round(x / 50000) * 50000 : Math.round(x / 100000) * 100000;
+  return { lo: round(lo), hi: Math.max(round(hi), 10000), plain: why.length === 0, why };
+}
+
+function shortRub(x: number): string { if(x>=1e6) return (Math.round(x/1e5)/10).toString().replace(".",",")+" млн"; if(x>=1000) return Math.round(x/1000)+" тыс."; return String(x); }
+function estRange(e: { lo: number; hi: number }): string { const a=shortRub(e.lo), b=shortRub(e.hi); const ua=a.split(" ")[1], ub=b.split(" ")[1]; return (e.lo===0?"до "+b:(ua===ub?a.split(" ")[0]+"–"+b:a+" – "+b))+" ₽"; }
+
 // ---------- Telegram ----------
 async function tg(method: string, body: unknown) {
   const r = await fetch(`https://api.telegram.org/bot${BOT}/${method}`, {
@@ -116,10 +148,18 @@ const h = (s: unknown) => String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp
 const plateText = (a: any) => `${a.l1}${a.d}${a.l2} ${a.r}`;
 const money = (n: number) => new Intl.NumberFormat("ru-RU").format(n) + " ₽";
 
+function estLine(a: any) {
+  const e = estimatePlate(a.l1, a.d, a.l2, a.r);
+  const base = `Оценка: ${estRange(e)}${e.plain ? " (обычный номер)" : ""}`;
+  if (a.price > e.hi * 2) return `${base}\n⚠️ Цена в ${Math.round(a.price / e.hi)} раз выше оценки`;
+  return base;
+}
+
 function adminCard(a: any, title: string) {
   return [
     `<b>${title}</b>`,
     `<b>${h(plateText(a))}</b> — ${money(a.price)}`,
+    estLine(a),
     a.city ? `Город: ${h(a.city)}` : "",
     a.descr ? `Описание: ${h(a.descr)}` : "",
     `Продавец: ${h(a.seller_name)}${a.seller_username ? " @" + h(a.seller_username) : ""} (ID ${a.seller_tg_id})`,

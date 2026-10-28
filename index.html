@@ -142,6 +142,15 @@ form{display:grid;gap:14px}
 .st-rejected{background:rgba(208,52,44,.14);color:#d0342c}
 .report{justify-self:center;color:var(--muted)}
 a.cbtn{cursor:pointer}
+.est{display:grid;gap:4px;padding:12px 14px;border-radius:12px;background:var(--bg);border:1px solid var(--line)}
+.est-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
+.est-top span{color:var(--muted);font-size:13px}
+.est-top b{font-size:18px;font-variant-numeric:tabular-nums}
+.est-why{font-size:13px;color:var(--fg)}
+.est-warn{margin-top:4px;font-size:13px;font-weight:500;color:#c0392b;background:rgba(208,52,44,.1);padding:8px 10px;border-radius:8px}
+.est-warn.soft{color:var(--muted);background:var(--accent-soft)}
+.est-use{justify-self:start;padding:2px 0;font-weight:600}
+.est-note{font-size:11.5px;color:var(--muted)}
 .paybar{border-radius:10px;padding:10px 12px;font-size:14px}
 .paybar.free{background:rgba(31,138,76,.13);color:var(--ok)}
 .paybar.paid{background:var(--accent-soft);color:var(--fg)}
@@ -213,6 +222,37 @@ document.addEventListener("click", e => {
   if (a.href.startsWith("https://t.me/")) TG.openTelegramLink(a.href); else TG.openLink(a.href);
 });
 
+// ОЦЕНКА НОМЕРА (общий код для сайта и функции)
+const EST_ELITE = ["АМР","ЕКХ","ММР","КМР","ОМР","ВОР","ХКХ","ЕРЕ","САС","ТМР"];
+const EST_REG = {"77":1.5,"97":1.5,"99":1.5,"177":1.5,"197":1.5,"199":1.5,"777":1.4,"797":1.4,"799":1.4,"977":1.4,"78":1.25,"98":1.25,"178":1.25,"198":1.25,"50":1.15,"95":1.3,"20":1.3,"05":1.3,"06":1.2,"07":1.2,"15":1.2,"09":1.15,"26":1.1,"23":1.1};
+function estimatePlate(l1, d, l2, r) {
+  const L = l1 + l2, why = [];
+  let lo, hi;
+  const same = d[0] === d[1] && d[1] === d[2];
+  if (d === "001") { lo = 400000; hi = 1500000; why.push("номер 001"); }
+  else if (d === "007") { lo = 300000; hi = 1000000; why.push("номер 007"); }
+  else if (/^00[1-9]$/.test(d)) { lo = 150000; hi = 500000; why.push("нули в начале"); }
+  else if (d === "777") { lo = 300000; hi = 1000000; why.push("три семёрки"); }
+  else if (same) { lo = 100000; hi = 400000; why.push("одинаковые цифры"); }
+  else if (/^[1-9]00$/.test(d)) { lo = 50000; hi = 150000; why.push("круглые цифры"); }
+  else if (/^0[1-9]0$/.test(d)) { lo = 50000; hi = 150000; why.push("красивые нули"); }
+  else if (d[0] === d[2]) { lo = 15000; hi = 50000; why.push("зеркальные цифры"); }
+  else if ("0123456789".includes(d) || "9876543210".includes(d)) { lo = 15000; hi = 40000; why.push("цифры по порядку"); }
+  else if (d[0] === d[1] || d[1] === d[2]) { lo = 5000; hi = 20000; why.push("две одинаковые цифры"); }
+  else { lo = 0; hi = 10000; }
+  const letSame = l1 === l2[0] && l2[0] === l2[1];
+  if (EST_ELITE.includes(L)) { lo = Math.max(lo * 4, 100000); hi = Math.max(hi * 4, 500000); why.push("серия " + L); }
+  else if (letSame) { lo = Math.max(lo * 3, 30000); hi = Math.max(hi * 3, 100000); why.push("одинаковые буквы"); }
+  else if (l2[0] === l2[1]) { lo *= 1.3; hi *= 1.3; }
+  const k = EST_REG[r] || 1;
+  if (k > 1.1 && hi > 20000) why.push("популярный регион");
+  lo *= k; hi *= k;
+  const round = (x) => x < 10000 ? Math.round(x / 1000) * 1000 : x < 100000 ? Math.round(x / 5000) * 5000 : x < 1000000 ? Math.round(x / 50000) * 50000 : Math.round(x / 100000) * 100000;
+  return { lo: round(lo), hi: Math.max(round(hi), 10000), plain: why.length === 0, why };
+}
+
+function shortRub(x){ if(x>=1e6) return (Math.round(x/1e5)/10).toString().replace(".",",")+" млн"; if(x>=1000) return Math.round(x/1000)+" тыс."; return String(x); }
+function estRange(e){ const a=shortRub(e.lo), b=shortRub(e.hi); const ua=a.split(" ")[1], ub=b.split(" ")[1]; return (e.lo===0?"до "+b:(ua===ub?a.split(" ")[0]+"–"+b:a+" – "+b))+" ₽"; }
 const LETTERS = "АВЕКМНОРСТУХ";
 const LAT = {A:"А",B:"В",E:"Е",K:"К",M:"М",H:"Н",O:"О",P:"Р",C:"С",T:"Т",Y:"У",X:"Х"};
 const toCyr = s => s.toUpperCase().split("").map(c => LAT[c] || c).join("");
@@ -401,6 +441,7 @@ function showForm(){
     ${head("Новое объявление")}
     <div class="paybar" id="paybar" hidden></div>
     <div class="center" id="pv"></div>
+    <div class="est" id="est" hidden></div>
     <form id="f" novalidate>
       <div class="f"><label>Номер</label>
         <div class="plate-in">
@@ -460,10 +501,27 @@ function showForm(){
     });
     el.addEventListener("keydown",e=>{ if(e.key==="Backspace" && !el.value && i>0){ e.preventDefault(); const p=$(ORDER[i-1]); p.focus(); p.value=p.value.slice(0,-1); p.dispatchEvent(new Event("input",{bubbles:true})); } });
   });
+  const updEst = () => {
+    const box=$("est"); if(!box) return;
+    const l1=v("f-l1"), d=v("f-d"), l2=v("f-l2"), r=v("f-r");
+    if(l1.length<1||d.length<3||l2.length<2||r.length<2||d==="000"){ box.hidden=true; return; }
+    const e=estimatePlate(l1,d,l2,r);
+    const pr=Number(v("f-price").replace(/\D/g,""));
+    let warn="";
+    if(pr && pr>e.hi*2) warn=`<div class="est-warn">Цена в ${Math.round(pr/e.hi)} раз выше оценки. С такой ценой номер, скорее всего, долго не продастся.</div>`;
+    else if(pr && e.lo>0 && pr<e.lo/2) warn=`<div class="est-warn soft">Цена заметно ниже оценки — проверьте, не ошиблись ли вы.</div>`;
+    const mid=Math.round((e.lo+e.hi)/2/1000)*1000;
+    box.innerHTML=`<div class="est-top"><span>Примерная цена</span><b>${estRange(e)}</b></div>
+      <div class="est-why">${e.plain?"Обычный номер без особых признаков":esc(e.why.join(", ")).replace(/^./,c=>c.toUpperCase())}</div>${warn}
+      ${e.lo>0?`<button type="button" class="linkbtn est-use" data-mid="${mid}">Поставить ${new Intl.NumberFormat("ru-RU").format(mid)} ₽</button>`:""}
+      <div class="est-note">Оценка по признакам номера, а не по реальным сделкам.</div>`;
+    box.hidden=false;
+  };
+  $("est").addEventListener("click",e=>{ const b=e.target.closest(".est-use"); if(!b) return; $("f-price").value=new Intl.NumberFormat("ru-RU").format(+b.dataset.mid); $("f-price").dispatchEvent(new Event("input",{bubbles:true})); });
   const upd = () => {
     $("pv").innerHTML = plate({l1:v("f-l1")||"_",d:v("f-d")||"___",l2:v("f-l2")||"__",r:v("f-r")||"__"},true);
   };
-  $("f").addEventListener("input",upd); upd();
+  $("f").addEventListener("input",()=>{ upd(); updEst(); }); upd();
   $("f").addEventListener("submit",async e=>{
     e.preventDefault();
     const l1=toCyr(v("f-l1")), d=v("f-d"), l2=toCyr(v("f-l2")), r=v("f-r");
