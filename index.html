@@ -142,6 +142,11 @@ form{display:grid;gap:14px}
 .st-rejected{background:rgba(208,52,44,.14);color:#d0342c}
 .report{justify-self:center;color:var(--muted)}
 a.cbtn{cursor:pointer}
+.paybar{border-radius:10px;padding:10px 12px;font-size:14px}
+.paybar.free{background:rgba(31,138,76,.13);color:var(--ok)}
+.paybar.paid{background:var(--accent-soft);color:var(--fg)}
+.paybar.paid b{color:var(--accent)}
+.legal a{color:var(--accent)}
 .legal{margin-top:28px;padding-top:16px;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px;line-height:1.5;display:grid;gap:8px}
 .legal p{margin:0;max-width:65ch}
 .legal b{color:var(--fg);font-weight:600}
@@ -177,6 +182,7 @@ a.cbtn{cursor:pointer}
     <p><b>Номерок не продаёт номера и не участвует в сделках.</b> Сервис только помогает найти объявление и связаться с продавцом.</p>
     <p>Переговоры, оплата и переоформление номера в ГИБДД проходят напрямую между покупателем и продавцом и находятся за рамками сервиса. Номер переходит к новому владельцу вместе с автомобилем или через процедуру сохранения номера в ГИБДД.</p>
     <p>Не переводите предоплату, пока не увидели документы и автомобиль.</p>
+    <p><a href="oferta.html">Тарифы и оферта</a></p>
   </footer>
 </div>
 
@@ -393,6 +399,7 @@ function showForm(){
   const uname = TGU && TGU.username;
   openSheet(`
     ${head("Новое объявление")}
+    <div class="paybar" id="paybar" hidden></div>
     <div class="center" id="pv"></div>
     <form id="f" novalidate>
       <div class="f"><label>Номер</label>
@@ -417,8 +424,27 @@ function showForm(){
       <div class="f"><label for="f-desc">Описание</label><textarea id="f-desc" maxlength="500" placeholder="Как переоформляется, есть ли торг"></textarea></div>
       <span class="err" id="e-send" hidden></span>
       <button class="submit" type="submit">Отправить на проверку</button>
-      <p class="note">Объявление появится в ленте после проверки модератором. Обычно это занимает до нескольких часов.</p>
+      <p class="note">Объявление появится в ленте после проверки модератором. Обычно это занимает до нескольких часов. Размещая объявление, вы принимаете <a href="oferta.html">условия оферты</a>.</p>
     </form>`);
+  let PRICING=null;
+  const tierPrice = pr => { if(!PRICING) return 0; const t=PRICING.tiers.find(t=>t.upTo===null||pr<=t.upTo); return t?t.price:0; };
+  const showPay = () => {
+    const bar=$("paybar"); if(!bar||!PRICING) return;
+    const btn=$("f").querySelector(".submit");
+    if(PRICING.free){
+      bar.className="paybar free";
+      bar.innerHTML = PRICING.left!==null ? `<b>Бесплатно.</b> Осталось бесплатных мест: ${PRICING.left} из ${PRICING.limit}` : `<b>Размещение бесплатное</b>`;
+    } else {
+      const pr=Number(($("f-price").value||"").replace(/\D/g,""));
+      bar.className="paybar paid";
+      bar.innerHTML = `Стоимость размещения на 30 дней: <b>${pr?tierPrice(pr)+" ₽":"зависит от цены номера"}</b>. <a href="oferta.html#tarify">Тарифы</a>`
+        + (PRICING.paymentsReady?"":`<br>Оплата откроется в ближайшее время.`);
+      if(!PRICING.paymentsReady){ btn.disabled=true; btn.textContent="Скоро"; }
+    }
+    bar.hidden=false;
+  };
+  api("pricing").then(p=>{ PRICING=p; showPay(); }).catch(()=>{});
+  $("f-price").addEventListener("input",showPay);
   const v = id => $(id).value.trim();
   // Буквенные поля принимают только 12 букв номера (латиница переводится), цифровые — только цифры
   const ORDER=["f-l1","f-d","f-l2","f-r"];

@@ -33,9 +33,21 @@ const ADMIN_COMMANDS = [
   { command: "list", description: "Последние опубликованные (со снятием)" },
   { command: "del", description: "Снять объявление: /del 15" },
   { command: "stats", description: "Статистика" },
+  { command: "paid", description: "Режим оплаты: бесплатно / платно" },
   { command: "admin", description: "Помощь модератора" },
 ];
 const MAX_PENDING = 3;
+const FREE_LIMIT = 100; // сколько объявлений размещаются бесплатно в режиме «Авто»
+const TIERS = [
+  { upTo: 150000, price: 99 },
+  { upTo: 500000, price: 299 },
+  { upTo: Infinity, price: 790 },
+];
+const MODE_LABEL: Record<string, string> = {
+  auto: `Авто: первые ${FREE_LIMIT} бесплатно, потом платно`,
+  free: "Всегда бесплатно",
+  paid: "Платно сейчас",
+};
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -122,6 +134,31 @@ async function notifySeller(a: any, text: string) {
   } catch { /* продавец мог не запускать бота */ }
 }
 
+// ---------- режим оплаты ----------
+async function getMode(): Promise<string> {
+  try {
+    const rows = await db("settings?select=value&key=eq.pay_mode");
+    const v = rows[0]?.value;
+    return v === "free" || v === "paid" ? v : "auto";
+  } catch { return "auto"; } // таблицы ещё нет — ведём себя как «Авто»
+}
+async function setMode(mode: string) {
+  await db("settings?on_conflict=key", {
+    method: "POST",
+    headers: { Prefer: "resolution=merge-duplicates,return=representation" },
+    body: JSON.stringify({ key: "pay_mode", value: mode }),
+  });
+}
+async function countPlaced(): Promise<number> {
+  const rows = await db("listings?select=id&status=in.(pending,active,sold)");
+  return rows.length;
+}
+async function getPricing() {
+  const [mode, count] = await Promise.all([getMode(), countPlaced()]);
+  const free = mode === "free" || (mode === "auto" && count < FREE_LIMIT);
+  return { mode, count, free, left: mode === "auto" ? Math.max(0, FREE_LIMIT - count) : null, limit: FREE_LIMIT, tiers: TIERS.map((t) => ({ upTo: Number.isFinite(t.upTo) ? t.upTo : null, price: t.price })), paymentsReady: false };
+}
+
 // ---------- действия мини-приложения ----------
 const SELLER_FIELDS = "id,l1,d,l2,r,price,city,descr,wa,status,created_at,approved_at";
 
@@ -150,6 +187,10 @@ async function handleApp(body: any) {
       if (!user.username && !wa)
         return json({ error: "У вас нет @username в Telegram. Укажите номер WhatsApp, чтобы покупатели могли связаться." }, 400);
 
+      const pricing = await getPricing();
+      if (!pricing.free)
+        return json({ error: "Бесплатные места закончились. Платное размещение откроется в ближайшее время." }, 402);
+
       const pending = await db(`listings?select=id&seller_tg_id=eq.${uid}&status=eq.pending`);
       if (pending.length >= MAX_PENDING)
         return json({ error: "У вас уже есть объявления на проверке. Дождитесь решения модератора." }, 429);
@@ -175,6 +216,9 @@ async function handleApp(body: any) {
           ]] },
         });
       }
+      if (ADMIN && pricing.mode === "auto" && pricing.count + 1 === FREE_LIMIT) {
+        await tg("sendMessage", { chat_id: ADMIN, text: `🎉 Размещено ${FREE_LIMIT} объявлений. В режиме «Авто» размещение теперь платное. Изменить: /paid` });
+      }
       return json({ ok: true, id: row.id });
     }
 
@@ -195,6 +239,9 @@ async function handleApp(body: any) {
       if (!rows.length) return json({ error: "Объявление не найдено или уже снято." }, 404);
       return json({ ok: true });
     }
+
+    case "pricing":
+      return json(await getPricing());
 
     case "whoami":
       return json({ admin: isAdmin(uid) });
@@ -248,6 +295,7 @@ const ADMIN_HELP = [
   "/list — последние 10 опубликованных, у каждого кнопка «Снять»",
   "/del 15 — снять объявление №15 (номер виден в карточке объявления)",
   "/stats — сколько объявлений в каждом статусе",
+  "/paid — режим оплаты: авто (первые 100 бесплатно), всегда бесплатно или платно",
   "",
   "В самом приложении у вас в каждом объявлении есть кнопка «Снять (модератор)».",
 ].join("\n");
@@ -287,6 +335,19 @@ async function handleAdminCommand(chat: number, text: string) {
     if (!Number.isInteger(id)) { await tg("sendMessage", { chat_id: chat, text: "Укажите номер объявления, например: /del 15" }); return true; }
     const a = await adminRemove(id);
     await tg("sendMessage", { chat_id: chat, text: a ? `🗑 Снято: №${id} ${plateText(a)}` : `Объявление №${id} не найдено или уже снято.` });
+    return true;
+  }
+  if (c === "/paid") {
+    const p = await getPricing();
+    await tg("sendMessage", {
+      chat_id: chat, parse_mode: "HTML",
+      text: `<b>Режим оплаты</b>\nСейчас: ${MODE_LABEL[p.mode]}\nРазмещено объявлений: ${p.count}\nНовые объявления сейчас: <b>${p.free ? "бесплатно" : "платно"}</b>\n\nВыберите режим:`,
+      reply_markup: { inline_keyboard: [
+        [{ text: (p.mode === "auto" ? "● " : "") + `Авто (до ${FREE_LIMIT} бесплатно)`, callback_data: "mode:auto" }],
+        [{ text: (p.mode === "free" ? "● " : "") + "Всегда бесплатно", callback_data: "mode:free" }],
+        [{ text: (p.mode === "paid" ? "● " : "") + "Платно сейчас", callback_data: "mode:paid" }],
+      ] },
+    });
     return true;
   }
   if (c === "/stats") {
@@ -331,6 +392,16 @@ async function handleBot(update: any) {
       return;
     }
     const [act, idStr] = String(cq.data || "").split(":");
+    if (act === "mode" && ["auto", "free", "paid"].includes(idStr)) {
+      try {
+        await setMode(idStr);
+        await tg("answerCallbackQuery", { callback_query_id: cq.id, text: "Сохранено" });
+        if (cq.message) await tg("editMessageText", { chat_id: cq.message.chat.id, message_id: cq.message.message_id, text: `✅ Режим оплаты: ${MODE_LABEL[idStr]}` });
+      } catch {
+        await tg("answerCallbackQuery", { callback_query_id: cq.id, text: "Не получилось. Создайте таблицу settings (файл 002_settings.sql).", show_alert: true });
+      }
+      return;
+    }
     const id = Number(idStr);
     let patch: Record<string, unknown> | null = null;
     let from = "";

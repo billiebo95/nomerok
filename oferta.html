@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<title>Тарифы и оферта — Номерок</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&display=swap">
+<style>
+:root{
+  --bg:#f3f5f9; --surface:#ffffff; --fg:#121820; --muted:#5d6878; --line:#dde2ea;
+  --accent:#0d6efd; --accent-soft:#e3ecf9; --warn:#b26a00; --warn-soft:#fff3d6;
+  --f-body:"Golos Text",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0f1520; --surface:#1a2332; --fg:#f6f9fd; --muted:#aab6c7; --line:#2c3a50;
+  --accent:#3d8bff; --accent-soft:#1c3157; --warn:#ffc35a; --warn-soft:#3a2c10; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1520; --surface:#1a2332; --fg:#f6f9fd; --muted:#aab6c7; --line:#2c3a50;
+  --accent:#3d8bff; --accent-soft:#1c3157; --warn:#ffc35a; --warn-soft:#3a2c10; color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:15px;line-height:1.55;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:16px 48px}
+.wrap{max-width:680px;margin:0 auto;display:grid;gap:22px}
+a{color:var(--accent)}
+.back{font-weight:600;text-decoration:none;font-size:15px}
+h1{margin:0;font-size:26px;line-height:1.2;text-wrap:balance}
+h2{margin:0 0 10px;font-size:19px;text-wrap:balance}
+h3{margin:18px 0 6px;font-size:16px}
+p,li{margin:0 0 8px;max-width:68ch}
+ol,ul{margin:0;padding-left:22px}
+.lead{color:var(--muted);margin:0}
+section{background:var(--surface);border-radius:14px;padding:18px}
+.tbl{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:13px;color:var(--muted);font-weight:500}
+td.p{white-space:nowrap;font-weight:700;text-align:right}
+th.p{text-align:right}
+.note{font-size:13px;color:var(--muted)}
+.promo{background:var(--accent-soft);border-radius:10px;padding:12px 14px;font-weight:500}
+.todo{background:var(--warn-soft);color:var(--warn);padding:1px 6px;border-radius:5px;font-weight:600}
+dl{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;margin:0}
+dt{color:var(--muted)}dd{margin:0;min-width:0;overflow-wrap:anywhere}
+nav.toc{display:flex;flex-wrap:wrap;gap:8px}
+nav.toc a{background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:5px 12px;text-decoration:none;font-size:14px}
+</style>
+</head><body>
+<div class="wrap">
+  <a class="back" href="./">← Вернуться в Номерок</a>
+  <div>
+    <h1>Тарифы, оплата и публичная оферта</h1>
+    <p class="lead">Номерок — сервис объявлений о продаже красивых автомобильных номеров в Telegram.</p>
+  </div>
+  <nav class="toc"><a href="#tarify">Тарифы</a><a href="#oplata">Оплата</a><a href="#vozvrat">Возврат</a><a href="#oferta">Оферта</a><a href="#kontakty">Контакты</a></nav>
+
+  <section id="tarify">
+    <h2>Тарифы</h2>
+    <p class="promo">Первые 100 объявлений в сервисе размещаются бесплатно. Когда бесплатные места закончатся, действуют тарифы ниже. Сколько бесплатных мест осталось, видно в форме размещения.</p>
+    <h3>Размещение объявления на 30 дней</h3>
+    <div class="tbl"><table>
+      <tr><th>Цена номера в объявлении</th><th class="p">Стоимость</th></tr>
+      <tr><td>до 150 000 ₽</td><td class="p">99 ₽</td></tr>
+      <tr><td>от 150 000 до 500 000 ₽</td><td class="p">299 ₽</td></tr>
+      <tr><td>от 500 000 ₽</td><td class="p">790 ₽</td></tr>
+    </table></div>
+    <h3>Продвижение</h3>
+    <div class="tbl"><table>
+      <tr><th>Услуга</th><th class="p">Стоимость</th></tr>
+      <tr><td>«Поднять» — объявление переносится в начало ленты</td><td class="p">79 ₽</td></tr>
+      <tr><td>«В топ на 7 дней» — закрепление вверху ленты и выделение цветом</td><td class="p">399 ₽</td></tr>
+    </table></div>
+    <p class="note">Цены указаны в рублях. Исполнитель применяет налог на профессиональный доход, НДС не облагается.</p>
+  </section>
+
+  <section id="oplata">
+    <h2>Как оплатить</h2>
+    <p>Оплата принимается банковскими картами и через Систему быстрых платежей (СБП) с помощью платёжного сервиса ЮKassa. Данные карты вводятся на защищённой странице ЮKassa, Номерок их не получает и не хранит.</p>
+    <p>Услуга оказывается в электронном виде сразу после оплаты: объявление отправляется на проверку модератору, а оплаченное продвижение включается автоматически. Чек приходит на почту или в Telegram.</p>
+  </section>
+
+  <section id="vozvrat">
+    <h2>Возврат денег</h2>
+    <ul>
+      <li>Если модератор отклонил оплаченное объявление, деньги возвращаются полностью.</li>
+      <li>Если услуга не была оказана из-за технического сбоя на нашей стороне, деньги возвращаются полностью.</li>
+      <li>После публикации объявления или включения продвижения услуга считается оказанной, и возврат за неё не производится. Это касается и случаев, когда пользователь сам снял объявление раньше срока.</li>
+      <li>Чтобы вернуть деньги, напишите нам (контакты ниже) и укажите номер объявления и дату оплаты. Возврат делается на ту же карту или счёт в течение 10 рабочих дней.</li>
+    </ul>
+  </section>
+
+  <section id="oferta">
+    <h2>Публичная оферта на оказание услуг</h2>
+    <p class="note">Редакция от 28 октября 2026 года.</p>
+
+    <h3>1. Общие положения</h3>
+    <ol>
+      <li>Этот документ — предложение (оферта) самозанятого <span class="todo">ФИО полностью</span>, ИНН <span class="todo">ИНН</span> (далее — Исполнитель) заключить договор на оказание услуг сервиса «Номерок» (далее — Сервис) на условиях ниже.</li>
+      <li>Сервис доступен в Telegram-боте @Nomerok95_bot и по адресу https://billiebo95.github.io/nomerok/.</li>
+      <li>Пользователь принимает оферту (акцепт), когда размещает объявление или оплачивает услугу. С этого момента договор считается заключённым.</li>
+    </ol>
+
+    <h3>2. Предмет договора</h3>
+    <ol>
+      <li>Исполнитель оказывает Пользователю услуги по размещению и продвижению объявлений о продаже автомобильных регистрационных номеров в Сервисе по тарифам, указанным на этой странице.</li>
+      <li>Сервис не продаёт номера, не является стороной сделок между пользователями и не участвует в них. Переговоры, оплата и переоформление номера в Госавтоинспекции (ГИБДД) проходят напрямую между покупателем и продавцом и находятся за рамками Сервиса.</li>
+    </ol>
+
+    <h3>3. Правила размещения объявлений</h3>
+    <ol>
+      <li>Пользователь размещает объявления только о номерах, которыми вправе распоряжаться, и указывает достоверную информацию.</li>
+      <li>Запрещено: ложные и повторяющиеся объявления, мошенничество, требование предоплаты под ложным предлогом, оскорбления, ссылки на сторонние ресурсы, не связанные с объявлением.</li>
+      <li>Все объявления проходят проверку модератором. Исполнитель вправе отклонить или снять объявление, нарушающее эти правила или законодательство РФ. В этом случае действуют правила возврата, описанные выше.</li>
+    </ol>
+
+    <h3>4. Права и обязанности сторон</h3>
+    <ol>
+      <li>Исполнитель обязуется оказать оплаченную услугу в срок, указанный в тарифе, и обеспечивать работу Сервиса, за исключением времени на технические работы и сбои у сторонних сервисов (Telegram, хостинг, платёжные системы).</li>
+      <li>Исполнитель вправе менять тарифы. Новые цены не распространяются на уже оплаченные услуги.</li>
+      <li>Пользователь обязуется соблюдать правила размещения и не использовать Сервис для незаконной деятельности.</li>
+    </ol>
+
+    <h3>5. Ответственность</h3>
+    <ol>
+      <li>Исполнитель не отвечает за содержание объявлений, действия других пользователей и результат сделок между ними.</li>
+      <li>Ответственность Исполнителя по договору ограничена суммой, которую Пользователь заплатил за соответствующую услугу.</li>
+    </ol>
+
+    <h3>6. Персональные данные</h3>
+    <ol>
+      <li>Для работы Сервиса Исполнитель получает от Telegram имя, @username и Telegram ID пользователя, а также номер WhatsApp, если пользователь его указал.</li>
+      <li>Имя, @username и номер WhatsApp публикуются в объявлении, чтобы покупатели могли связаться с продавцом. Размещая объявление, пользователь соглашается на это. Telegram ID другим пользователям не показывается.</li>
+      <li>Данные используются только для работы Сервиса и не передаются третьим лицам, кроме случаев, предусмотренных законом. Пользователь может в любой момент снять объявление или попросить удалить свои данные, написав Исполнителю.</li>
+    </ol>
+
+    <h3>7. Споры и прочие условия</h3>
+    <ol>
+      <li>Споры решаются переговорами. Претензия рассматривается в течение 10 рабочих дней. Если договориться не удалось, спор решается в суде по законодательству Российской Федерации.</li>
+      <li>Исполнитель может изменять оферту. Новая редакция публикуется на этой странице и действует с момента публикации.</li>
+    </ol>
+  </section>
+
+  <section id="kontakty">
+    <h2>Контакты и реквизиты</h2>
+    <dl>
+      <dt>Исполнитель</dt><dd>Самозанятый <span class="todo">ФИО полностью</span></dd>
+      <dt>ИНН</dt><dd><span class="todo">ИНН</span></dd>
+      <dt>Email</dt><dd><span class="todo">email</span></dd>
+      <dt>Telegram</dt><dd><span class="todo">@ваш_username</span></dd>
+      <dt>Бот</dt><dd><a href="https://t.me/Nomerok95_bot">@Nomerok95_bot</a></dd>
+    </dl>
+  </section>
+</div>
+<script>
+try{ const TG=window.Telegram&&Telegram.WebApp; if(TG&&TG.initData){ TG.ready(); if(TG.colorScheme) document.documentElement.dataset.theme=TG.colorScheme; } }catch(e){}
+</script>
+</body></html>
